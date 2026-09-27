@@ -1,0 +1,3 @@
+data/org.mocka_desktop.Menu.gschema.xml
+data/org.mocka_desktop.MenuApplet.mate-panel-applet.desktop.in
+src/applet/mocka-menu-applet.c

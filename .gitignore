@@ -56,3 +56,9 @@ dkms.conf
 
 # IDE
 .idea/
+
+# Meson build directory
+/build/
+
+# Generated translation template
+po/*.pot

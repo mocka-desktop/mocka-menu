@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: BSD-3-Clause
+
+  Copyright (c) 2026 The Mocka Desktop Project
+-->
+<schemalist gettext-domain="mocka-menu">
+
+  <enum id="org.mocka_desktop.Menu.Layout">
+    <value nick="classic" value="0"/>
+    <value nick="launcher" value="1"/>
+  </enum>
+
+  <enum id="org.mocka_desktop.Menu.SearchPosition">
+    <value nick="top" value="0"/>
+    <value nick="bottom" value="1"/>
+    <value nick="panel" value="2"/>
+  </enum>
+
+  <!-- One fixed path, shared by every Mocka Menu applet (SPEC section 15). -->
+  <schema id="org.mocka_desktop.Menu" path="/org/mocka-desktop/menu/">
+
+    <key name="layout" enum="org.mocka_desktop.Menu.Layout">
+      <default>'classic'</default>
+      <summary>Menu layout</summary>
+      <description>
+        Which layout the menu opens in: classic, a menu window attached to the
+        panel button, or launcher, a full-screen app grid.
+      </description>
+    </key>
+
+    <key name="search-position" enum="org.mocka_desktop.Menu.SearchPosition">
+      <default>'top'</default>
+      <summary>Search entry position</summary>
+      <description>
+        Where the search entry sits: top or bottom of the menu window, or panel,
+        beside the panel button. In the launcher layout top and bottom both put
+        it at the top of the screen.
+      </description>
+    </key>
+
+    <key name="favourite-apps" type="as">
+      <!-- Distributions may override this, as GhostBSD does to add its software center. -->
+      <default>['caja-browser.desktop', 'firefox.desktop', 'mate-terminal.desktop', 'matecc.desktop']</default>
+      <summary>Favourite applications</summary>
+      <description>
+        Ordered list of desktop entry IDs shown in the favourites column. IDs of
+        applications that are not installed are kept, so a favourite returns
+        when its application is reinstalled.
+      </description>
+    </key>
+
+    <key name="label-visible" type="b">
+      <default>false</default>
+      <summary>Show a label on the panel button</summary>
+      <description>
+        Show a label next to the icon on the panel button. Labels are always
+        hidden on vertical panels.
+      </description>
+    </key>
+
+    <key name="label-text" type="s">
+      <default>''</default>
+      <summary>Panel button label</summary>
+      <description>
+        Text of the panel button label. Empty for the translated default,
+        "Menu".
+      </description>
+    </key>
+
+    <key name="icon-name" type="s">
+      <!-- Translators: Do NOT translate or transliterate this text (this is an icon name)! -->
+      <default>'start-here'</default>
+      <summary>Panel button icon</summary>
+      <description>
+        Name of the icon theme icon shown on the panel button.
+      </description>
+    </key>
+
+    <key name="rollover" type="b">
+      <default>false</default>
+      <summary>Select categories on hover</summary>
+      <description>
+        In the classic layout, hovering a category selects it instead of
+        needing a click.
+      </description>
+    </key>
+
+    <key name="hot-key" type="s">
+      <default>'Super_L'</default>
+      <summary>Key that toggles the menu</summary>
+      <description>
+        Name of the key that opens and closes the menu when pressed and
+        released on its own. Empty for no key.
+      </description>
+    </key>
+
+  </schema>
+
+</schemalist>

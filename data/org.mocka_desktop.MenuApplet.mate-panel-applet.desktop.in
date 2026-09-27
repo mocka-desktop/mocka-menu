@@ -1,0 +1,12 @@
+[Applet Factory]
+Id=MockaMenuAppletFactory
+InProcess=true
+Location=@APPLET_LOCATION@
+Name=Mocka Menu Factory
+Description=Factory for Mocka Menu
+
+[MockaMenuApplet]
+Name=Mocka Menu
+Description=Application menu with favourites and search
+# Translators: Do NOT translate or transliterate this text (this is an icon file name)!
+Icon=start-here
