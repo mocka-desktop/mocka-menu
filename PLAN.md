@@ -136,11 +136,11 @@ grabs and marco's bindings keep working.
 - [ ] Drop the synthetic Super + number item from mocka-dock PLAN.md M5, since the menu no longer grabs Super
 - [ ] Manual test: menu opened from the dock and from the panel button, with the same settings
 
-## M7: Release 0.1
+## M7: Release 0.0.1
 
 - [ ] Translations: English and French (gettext set up in M0)
 - [ ] Man page
 - [ ] User guide on the wiki brought up to date with everything added since the alpha
 - [ ] README update
 - [ ] Performance check: RSS, idle CPU, time to show the menu, 500+ desktop entries
-- [ ] Tag 0.1, update the GhostBSD port, submit `x11/mocka-menu` to FreeBSD ports
+- [ ] Tag 0.0.1, update the GhostBSD port, submit `x11/mocka-menu` to FreeBSD ports
