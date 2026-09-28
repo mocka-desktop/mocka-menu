@@ -60,7 +60,7 @@ grabs and marco's bindings keep working.
 - [x] gettext setup from the start: `po/` directory, all user-visible strings wrapped in `_()`
 - [x] `libmocka-menu` and the applet as separate build targets
 - [x] Minimal applet that appears in "Add to Panel" as Mocka Menu
-- [ ] Decide in-process or out-of-process: verify that dragging an app from a test window in the applet reaches the desktop, a panel, and Mocka Dock. The dock had to move in-process for drag and drop (mocka-dock PLAN.md), so test in-process first
+- [x] Decide in-process or out-of-process: verify that dragging an app from a test window in the applet reaches the desktop, a panel, and Mocka Dock. The dock had to move in-process for drag and drop (mocka-dock PLAN.md), so test in-process first
 - [ ] Verify Super alone through XInput 2 raw events: opens on release, not after Super + key or Super + click, NumLock and CapsLock on or off, marco running with its default bindings
 - [ ] Verify Mocka Dock's Super + number shortcuts still work with the menu running
 - [ ] Verify a popup window with pointer and keyboard grabs from the applet (Classic)

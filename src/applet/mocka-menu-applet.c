@@ -148,7 +148,8 @@ mocka_menu_applet_factory (MatePanelApplet *applet,
 /*
  * In process, like the dock: the panel does not pass drag and drop on to
  * applets running in their own process, and apps are dragged out of the menu
- * (SPEC sections 8 and 13). M0 confirms this on a real panel.
+ * (SPEC sections 8 and 13). Confirmed in M0 on a real panel, where a drag
+ * started inside the applet reached the desktop, a panel, and Mocka Dock.
  */
 MATE_PANEL_APPLET_IN_PROCESS_FACTORY (MOCKA_MENU_FACTORY_ID,
                                       MOCKA_TYPE_MENU_APPLET,
