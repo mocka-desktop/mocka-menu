@@ -61,12 +61,12 @@ grabs and marco's bindings keep working.
 - [x] `libmocka-menu` and the applet as separate build targets
 - [x] Minimal applet that appears in "Add to Panel" as Mocka Menu
 - [x] Decide in-process or out-of-process: verify that dragging an app from a test window in the applet reaches the desktop, a panel, and Mocka Dock. The dock had to move in-process for drag and drop (mocka-dock PLAN.md), so test in-process first
-- [ ] Verify Super alone through XInput 2 raw events: opens on release, not after Super + key or Super + click, NumLock and CapsLock on or off, marco running with its default bindings
-- [ ] Verify Mocka Dock's Super + number shortcuts still work with the menu running
-- [ ] Verify a popup window with pointer and keyboard grabs from the applet (Classic)
-- [ ] Verify a window covering the whole monitor, panels included, under marco (Launcher)
-- [ ] Verify libmate-menu loads the menu tree on GhostBSD, including the settings menu for Preferences and Administration
-- [ ] Verify on GhostBSD with LightDM and ConsoleKit2: `org.gnome.SessionManager` (Logout, Shutdown), `org.mate.ScreenSaver` (Lock), and `org.freedesktop.DisplayManager.Seat` (SwitchToGreeter) at `XDG_SEAT_PATH`
+- [x] Verify Super alone through XInput 2 raw events: opens on release, not after Super + key or Super + click, NumLock and CapsLock on or off, marco running with its default bindings
+- [x] Verify another client's passive grab keeps firing while we watch raw events: a test client grabbing Super + 1 received it, and the raw watcher saw the same keys and declined to open. Mocka Dock has no Super + number shortcuts yet, so retest against the dock itself when they land (M6)
+- [x] Verify a popup window with pointer and keyboard grabs from the applet (Classic)
+- [x] Verify a window covering the whole monitor, panels included, under marco (Launcher). Covers the panels, dims the desktop with the compositor and is solid without it. Only one monitor here, so which monitor it lands on is retested when a second one is available
+- [x] Verify libmate-menu loads the menu tree on GhostBSD, including the settings menu for Preferences and Administration
+- [x] Verify on GhostBSD with LightDM and ConsoleKit2: `org.gnome.SessionManager` (Logout, Shutdown), `org.mate.ScreenSaver` (Lock), and `org.freedesktop.DisplayManager.Seat` (SwitchToGreeter) at `XDG_SEAT_PATH`
 - [ ] Verify whether an executable desktop entry copied to `~/Desktop` runs in Caja without a trust prompt (SPEC section 23)
 - [ ] Port skeleton in the GhostBSD ports overlay (draft only, stashed until the M3 alpha)
 - [ ] Manual test by maintainer
