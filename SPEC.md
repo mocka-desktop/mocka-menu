@@ -123,7 +123,7 @@ From left to right:
 1. **Favourites column** (section 8), with the session controls at its bottom
    (section 10).
 2. **Category list**: "All" first, then the categories of the menu tree in
-   menu order.
+   menu order, ending with the Settings item (see below).
 3. **App list**: one row per app, with icon and name. Hovering shows the
    app's comment as a tooltip.
 
@@ -138,6 +138,19 @@ search position setting (section 9.3).
   app list shows search results (section 9).
 - The category list scrolls when it does not fit, and shows a scrollbar only
   when needed.
+
+### Settings shortcut
+
+After the categories, separated from them, the category list ends with a
+**Settings** item. It is not a category: clicking it launches the desktop's
+settings application (`matecc.desktop`, later Mocka Settings). It shows a
+settings icon from the theme and the entry's comment as its tooltip, and is
+hidden when that entry is not installed.
+
+The settings application stays listed in "All" and in search results, like
+any other app, so typing its name still finds it.
+
+Both layouts share this, since they share the category list.
 
 ## 7. Launcher layout
 
@@ -453,6 +466,8 @@ logind, or Python.
   `mate-terminal.desktop`, and `matecc.desktop`, the same apps as Mocka
   Dock's default. Distributions change it with a GSettings override.
 - `layout` defaults to `classic`.
+- The category list ends with a Settings item that launches the desktop's
+  settings application. The categories themselves stay in menu order.
 
 ## 21. Not included
 
