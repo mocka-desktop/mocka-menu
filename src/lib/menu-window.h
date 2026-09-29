@@ -23,6 +23,10 @@ G_DECLARE_FINAL_TYPE (MockaMenuWindow, mocka_menu_window, MOCKA, MENU_WINDOW,
 
 GtkWidget *mocka_menu_window_new              (void);
 
+/* Which screen edge the panel sits on, so the menu opens away from it. */
+void       mocka_menu_window_set_panel_side   (MockaMenuWindow *self,
+                                               GtkPositionType  side);
+
 /* Anchor is the panel button the menu belongs to. */
 void       mocka_menu_window_open             (MockaMenuWindow *self,
                                                GtkWidget       *anchor);

@@ -26,3 +26,10 @@ test('menu-data-french', test_menu_data,
   args: ['-p', '/menu-data/translated-names'],
   env: test_env_fr,
 )
+
+# Geometry only, so it needs no panel, no display and no menu tree.
+test_classic_placement = executable('test-classic-placement',
+  'test-classic-placement.c',
+  dependencies: [mocka_menu_dep],
+)
+test('classic-placement', test_classic_placement)

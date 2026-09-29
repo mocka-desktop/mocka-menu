@@ -16,6 +16,7 @@
 
 #include <glib/gi18n-lib.h>
 
+#include "classic-view.h"
 #include "menu-window.h"
 
 /*
@@ -26,10 +27,6 @@
  */
 #define REOPEN_GUARD_MS 300
 
-/* A starting size, until the placement rules of SPEC section 6 refine it. */
-#define DEFAULT_WIDTH  480
-#define DEFAULT_HEIGHT 480
-
 struct _MockaMenuWindow
 {
   GtkWindow parent_instance;
@@ -37,6 +34,7 @@ struct _MockaMenuWindow
   GtkWidget *content_area;
   GdkSeat   *held_seat;     /* while open, the seat we grabbed */
   GtkWidget *anchor;        /* the panel button, not owned */
+  GtkPositionType panel_side;
   gboolean   open;
   guint32    closed_at;     /* event time of the last close on the anchor */
 };
@@ -53,51 +51,77 @@ enum {
 
 static guint signals[N_SIGNALS];
 
-/* Whether a click at these root coordinates landed on the panel button. */
+/*
+ * The widget's rectangle in root coordinates.
+ *
+ * A button has no window of its own, so gtk_widget_get_window() hands back an
+ * ancestor's, and adding the allocation to that origin lands somewhere else
+ * entirely. Translating to the toplevel first is what actually works.
+ */
 static gboolean
-click_was_on_anchor (MockaMenuWindow *self, gint root_x, gint root_y)
+widget_root_rect (GtkWidget *widget, GdkRectangle *out)
 {
+  GtkWidget *toplevel;
   GdkWindow *window;
   GtkAllocation alloc;
-  gint origin_x, origin_y;
+  gint top_x = 0, top_y = 0;
+  gint origin_x = 0, origin_y = 0;
 
-  if (self->anchor == NULL || !gtk_widget_get_realized (self->anchor))
+  if (widget == NULL || !gtk_widget_get_realized (widget))
     return FALSE;
 
-  window = gtk_widget_get_window (self->anchor);
+  toplevel = gtk_widget_get_toplevel (widget);
+  if (toplevel == NULL)
+    return FALSE;
+
+  window = gtk_widget_get_window (toplevel);
   if (window == NULL)
     return FALSE;
 
-  gdk_window_get_origin (window, &origin_x, &origin_y);
-  gtk_widget_get_allocation (self->anchor, &alloc);
-  origin_x += alloc.x;
-  origin_y += alloc.y;
+  if (!gtk_widget_translate_coordinates (widget, toplevel, 0, 0, &top_x, &top_y))
+    return FALSE;
 
-  return root_x >= origin_x && root_x < origin_x + alloc.width
-      && root_y >= origin_y && root_y < origin_y + alloc.height;
+  gdk_window_get_origin (window, &origin_x, &origin_y);
+  gtk_widget_get_allocation (widget, &alloc);
+
+  out->x = origin_x + top_x;
+  out->y = origin_y + top_y;
+  out->width = alloc.width;
+  out->height = alloc.height;
+  return TRUE;
 }
 
+/*
+ * A click anywhere else closes the menu (SPEC section 4).
+ *
+ * The grab is taken with owner_events, so a press over another window of this
+ * process, the panel button included, arrives here with its coordinates still
+ * relative to that window rather than to this one. Only the root coordinates
+ * mean the same thing in both, so the test has to be made in those.
+ */
 static gboolean
 on_button_press (GtkWidget      *widget,
                  GdkEventButton *event,
                  gpointer        user_data)
 {
   MockaMenuWindow *self = MOCKA_MENU_WINDOW (widget);
-  gint width, height;
+  GdkRectangle rect;
+  gint root_x = (gint) event->x_root;
+  gint root_y = (gint) event->y_root;
 
-  gtk_window_get_size (GTK_WINDOW (self), &width, &height);
+  if (!widget_root_rect (GTK_WIDGET (self), &rect))
+    return GDK_EVENT_PROPAGATE;
 
-  /* The grab sends clicks elsewhere here, with coordinates outside us. */
-  if (event->x < 0 || event->y < 0 || event->x > width || event->y > height)
-    {
-      if (click_was_on_anchor (self, (gint) event->x_root, (gint) event->y_root))
-        self->closed_at = event->time;
+  if (root_x >= rect.x && root_x < rect.x + rect.width
+      && root_y >= rect.y && root_y < rect.y + rect.height)
+    return GDK_EVENT_PROPAGATE;
 
-      mocka_menu_window_close (self);
-      return GDK_EVENT_STOP;
-    }
+  /* The same click may reach the panel button next, which would open the
+   * menu again, so disarm that. */
+  self->closed_at = event->time;
+  mocka_menu_window_close (self);
 
-  return GDK_EVENT_PROPAGATE;
+  return GDK_EVENT_STOP;
 }
 
 static gboolean
@@ -138,9 +162,8 @@ mocka_menu_window_init (MockaMenuWindow *self)
 
   gtk_window_set_decorated (window, FALSE);
   gtk_window_set_resizable (window, FALSE);
-  /* A non-resizable window takes its size from the content, so the starting
-   * size has to be a request rather than a default. */
-  gtk_widget_set_size_request (GTK_WIDGET (self), DEFAULT_WIDTH, DEFAULT_HEIGHT);
+  /* A bottom panel until the applet says otherwise: the common case. */
+  self->panel_side = GTK_POS_BOTTOM;
   /* Never in taskbars, pagers, or window switchers (SPEC section 4). */
   gtk_window_set_skip_taskbar_hint (window, TRUE);
   gtk_window_set_skip_pager_hint (window, TRUE);
@@ -193,25 +216,54 @@ mocka_menu_window_is_open (MockaMenuWindow *self)
   return self->open;
 }
 
-/* Rough for now: the placement rules of SPEC section 6 are the next step. */
+void
+mocka_menu_window_set_panel_side (MockaMenuWindow *self, GtkPositionType side)
+{
+  g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
+  self->panel_side = side;
+}
+
+/* Next to the button, inside the monitor holding it (SPEC section 6). */
 static void
 place_near_anchor (MockaMenuWindow *self, GtkWidget *anchor)
 {
-  GdkWindow *window;
-  GtkAllocation alloc;
-  GtkRequisition size;
-  gint origin_x = 0, origin_y = 0;
+  GdkRectangle anchor_rect;
+  GdkRectangle monitor_rect;
+  GdkRectangle placed;
+  GdkDisplay *display;
+  GdkMonitor *monitor;
+  GtkRequisition natural;
 
-  if (anchor == NULL || (window = gtk_widget_get_window (anchor)) == NULL)
+  if (!widget_root_rect (anchor, &anchor_rect))
     return;
 
-  gdk_window_get_origin (window, &origin_x, &origin_y);
-  gtk_widget_get_allocation (anchor, &alloc);
-  gtk_widget_get_preferred_size (GTK_WIDGET (self), NULL, &size);
+  display = gtk_widget_get_display (anchor);
+  monitor = gdk_display_get_monitor_at_window (display,
+                                               gtk_widget_get_window (anchor));
+  if (monitor == NULL)
+    monitor = gdk_display_get_primary_monitor (display);
+  if (monitor == NULL)
+    return;
 
-  gtk_window_move (GTK_WINDOW (self),
-                   origin_x + alloc.x,
-                   origin_y + alloc.y - size.height);
+  gdk_monitor_get_geometry (monitor, &monitor_rect);
+
+  /*
+   * The height the contents want, so the whole category list shows without
+   * scrolling when the monitor has room for it. The app list does not ask for
+   * its full height, or hundreds of apps would want a window taller than any
+   * screen; it scrolls instead.
+   */
+  gtk_widget_get_preferred_size (self->content_area, NULL, &natural);
+
+  placed = mocka_classic_view_place (&anchor_rect, &monitor_rect,
+                                     self->panel_side,
+                                     MAX (natural.width, MOCKA_CLASSIC_WANT_WIDTH),
+                                     MAX (natural.height, MOCKA_CLASSIC_WANT_HEIGHT));
+
+
+  gtk_widget_set_size_request (GTK_WIDGET (self), placed.width, placed.height);
+  gtk_window_resize (GTK_WINDOW (self), placed.width, placed.height);
+  gtk_window_move (GTK_WINDOW (self), placed.x, placed.y);
 }
 
 void
@@ -230,8 +282,9 @@ mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor)
   /* Same state every time it opens (SPEC section 4). */
   g_signal_emit (self, signals[SIGNAL_RESET], 0);
 
-  gtk_widget_show (GTK_WIDGET (self));
+  /* Placed before it is shown, so it never appears in the wrong spot. */
   place_near_anchor (self, anchor);
+  gtk_widget_show (GTK_WIDGET (self));
 
   seat = gdk_display_get_default_seat (gtk_widget_get_display (GTK_WIDGET (self)));
   status = gdk_seat_grab (seat, gtk_widget_get_window (GTK_WIDGET (self)),
@@ -268,6 +321,7 @@ void
 mocka_menu_window_toggle (MockaMenuWindow *self, GtkWidget *anchor)
 {
   g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
+
 
   if (self->open)
     {

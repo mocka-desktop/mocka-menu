@@ -12,6 +12,8 @@
 #include <gtk/gtk.h>
 #include <mate-panel-applet.h>
 
+#include "classic-view.h"
+#include "menu-data.h"
 #include "menu-window.h"
 #include "mocka-menu.h"
 
@@ -33,6 +35,8 @@ struct _MockaMenuApplet
   GtkWidget *button;
   GtkWidget *image;
   GtkWidget *menu_window;
+  GtkWidget *view;
+  MockaMenuData *data;
   GSettings *settings;  /* shared by every applet, not owned (SPEC section 15) */
 };
 
@@ -94,10 +98,81 @@ on_change_size (MockaMenuApplet *self,
   update_icon (self);
 }
 
+/* The orient says which way the applet faces: UP on a bottom panel. */
+static GtkPositionType
+panel_side_for_orient (MatePanelAppletOrient orient)
+{
+  switch (orient)
+    {
+    case MATE_PANEL_APPLET_ORIENT_DOWN:
+      return GTK_POS_TOP;
+    case MATE_PANEL_APPLET_ORIENT_LEFT:
+      return GTK_POS_RIGHT;
+    case MATE_PANEL_APPLET_ORIENT_RIGHT:
+      return GTK_POS_LEFT;
+    case MATE_PANEL_APPLET_ORIENT_UP:
+    default:
+      return GTK_POS_BOTTOM;
+    }
+}
+
+static void
+on_change_orient (MockaMenuApplet       *self,
+                  MatePanelAppletOrient  orient,
+                  gpointer               user_data)
+{
+  mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window),
+                                    panel_side_for_orient (orient));
+}
+
 static void
 on_button_clicked (MockaMenuApplet *self)
 {
   mocka_menu_window_toggle (MOCKA_MENU_WINDOW (self->menu_window), self->button);
+}
+
+/* Every opening starts from the same state (SPEC section 4). */
+static void
+on_menu_reset (MockaMenuApplet *self)
+{
+  if (self->view != NULL)
+    mocka_classic_view_reset (MOCKA_CLASSIC_VIEW (self->view));
+}
+
+static void
+on_app_activated (MockaMenuApplet *self,
+                  MockaMenuApp    *app)
+{
+  /* Launching properly, from the home folder and with startup notification,
+   * is the next step (SPEC section 17). */
+  g_app_info_launch (G_APP_INFO (mocka_menu_app_get_app_info (app)),
+                     NULL, NULL, NULL);
+  mocka_menu_window_close (MOCKA_MENU_WINDOW (self->menu_window));
+}
+
+/* Reads the menu tree once at startup (SPEC section 18). */
+static void
+build_menu_contents (MockaMenuApplet *self)
+{
+  GtkWidget *content;
+  GError *error = NULL;
+
+  self->data = mocka_menu_data_new ();
+  if (!mocka_menu_data_load (self->data, &error))
+    {
+      g_warning ("mocka-menu: could not read the menu: %s", error->message);
+      g_clear_error (&error);
+      return;
+    }
+
+  self->view = mocka_classic_view_new (self->data);
+  g_signal_connect_swapped (self->view, "app-activated",
+                            G_CALLBACK (on_app_activated), self);
+
+  content = mocka_menu_window_get_content_area (
+      MOCKA_MENU_WINDOW (self->menu_window));
+  gtk_box_pack_start (GTK_BOX (content), self->view, TRUE, TRUE, 0);
+  gtk_widget_show_all (self->view);
 }
 
 static void
@@ -106,6 +181,7 @@ mocka_menu_applet_dispose (GObject *object)
   MockaMenuApplet *self = MOCKA_MENU_APPLET (object);
 
   g_clear_pointer (&self->menu_window, gtk_widget_destroy);
+  g_clear_object (&self->data);
 
   G_OBJECT_CLASS (mocka_menu_applet_parent_class)->dispose (object);
 }
@@ -138,8 +214,14 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
 
   /* Left click toggles the menu (SPEC section 3). */
   self->menu_window = mocka_menu_window_new ();
+  mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window),
+      panel_side_for_orient (mate_panel_applet_get_orient (applet)));
   g_signal_connect_swapped (self->button, "clicked",
                             G_CALLBACK (on_button_clicked), self);
+  g_signal_connect (self, "change-orient", G_CALLBACK (on_change_orient), NULL);
+  g_signal_connect_swapped (self->menu_window, "reset",
+                            G_CALLBACK (on_menu_reset), self);
+  build_menu_contents (self);
 
   mate_panel_applet_set_flags (applet, MATE_PANEL_APPLET_EXPAND_MINOR);
 
