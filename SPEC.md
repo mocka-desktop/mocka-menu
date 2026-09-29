@@ -493,5 +493,3 @@ logind, or Python.
 
 - Launcher: vertical scrolling for now (section 7). Confirm, or move paging
   from section 22 into the first release.
-- Add to Desktop: confirm that an executable copy is enough for Caja on
-  GhostBSD to run it without a trust prompt.
