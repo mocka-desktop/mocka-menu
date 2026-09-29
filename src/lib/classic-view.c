@@ -107,6 +107,8 @@ struct _MockaClassicView
   GtkWidget *category_scroller;
   GtkWidget *app_list;
   GtkWidget *app_scroller;
+
+  gboolean rollover;
 };
 
 G_DEFINE_TYPE (MockaClassicView, mocka_classic_view, GTK_TYPE_BOX)
@@ -179,6 +181,31 @@ make_category_row (const gchar *name, GIcon *icon)
   gtk_container_add (GTK_CONTAINER (row), box);
 
   return row;
+}
+
+/*
+ * With rollover on, moving over a category selects it, so its apps show
+ * without a click (SPEC section 6). The pointer is inside our own window
+ * here, so the event coordinates are the list's own.
+ */
+static gboolean
+on_category_motion (GtkWidget        *widget,
+                    GdkEventMotion   *event,
+                    MockaClassicView *self)
+{
+  GtkListBoxRow *row;
+
+  if (!self->rollover)
+    return GDK_EVENT_PROPAGATE;
+
+  row = gtk_list_box_get_row_at_y (GTK_LIST_BOX (self->category_list),
+                                   (gint) event->y);
+
+  /* The Settings shortcut is not selectable, so hovering it selects nothing. */
+  if (row != NULL && gtk_list_box_row_get_selectable (row))
+    gtk_list_box_select_row (GTK_LIST_BOX (self->category_list), row);
+
+  return GDK_EVENT_PROPAGATE;
 }
 
 static void
@@ -374,6 +401,9 @@ mocka_classic_view_init (MockaClassicView *self)
                       FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self), self->app_scroller, TRUE, TRUE, 0);
 
+  gtk_widget_add_events (self->category_list, GDK_POINTER_MOTION_MASK);
+  g_signal_connect (self->category_list, "motion-notify-event",
+                    G_CALLBACK (on_category_motion), self);
   g_signal_connect (self->category_list, "row-selected",
                     G_CALLBACK (on_category_selected), self);
   g_signal_connect (self->category_list, "row-activated",
@@ -388,6 +418,13 @@ mocka_classic_view_class_init (MockaClassicViewClass *klass)
   view_signals[SIGNAL_APP_ACTIVATED] =
     g_signal_new ("app-activated", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
                   0, NULL, NULL, NULL, G_TYPE_NONE, 1, MOCKA_TYPE_MENU_APP);
+}
+
+void
+mocka_classic_view_set_rollover (MockaClassicView *self, gboolean rollover)
+{
+  g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
+  self->rollover = rollover;
 }
 
 GtkWidget *

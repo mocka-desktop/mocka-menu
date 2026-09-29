@@ -13,6 +13,7 @@
 #include <mate-panel-applet.h>
 
 #include "classic-view.h"
+#include "launch.h"
 #include "menu-data.h"
 #include "menu-window.h"
 #include "mocka-menu.h"
@@ -131,6 +132,16 @@ on_button_clicked (MockaMenuApplet *self)
   mocka_menu_window_toggle (MOCKA_MENU_WINDOW (self->menu_window), self->button);
 }
 
+static void
+update_rollover (MockaMenuApplet *self)
+{
+  if (self->view == NULL)
+    return;
+
+  mocka_classic_view_set_rollover (MOCKA_CLASSIC_VIEW (self->view),
+      g_settings_get_boolean (self->settings, "rollover"));
+}
+
 /* Every opening starts from the same state (SPEC section 4). */
 static void
 on_menu_reset (MockaMenuApplet *self)
@@ -143,11 +154,9 @@ static void
 on_app_activated (MockaMenuApplet *self,
                   MockaMenuApp    *app)
 {
-  /* Launching properly, from the home folder and with startup notification,
-   * is the next step (SPEC section 17). */
-  g_app_info_launch (G_APP_INFO (mocka_menu_app_get_app_info (app)),
-                     NULL, NULL, NULL);
+  /* The menu closes as soon as something is launched (SPEC section 4). */
   mocka_menu_window_close (MOCKA_MENU_WINDOW (self->menu_window));
+  mocka_launch_app (mocka_menu_app_get_app_info (app), GTK_WIDGET (self));
 }
 
 /* Reads the menu tree once at startup (SPEC section 18). */
@@ -173,6 +182,10 @@ build_menu_contents (MockaMenuApplet *self)
       MOCKA_MENU_WINDOW (self->menu_window));
   gtk_box_pack_start (GTK_BOX (content), self->view, TRUE, TRUE, 0);
   gtk_widget_show_all (self->view);
+
+  update_rollover (self);
+  g_signal_connect_swapped (self->settings, "changed::rollover",
+                            G_CALLBACK (update_rollover), self);
 }
 
 static void

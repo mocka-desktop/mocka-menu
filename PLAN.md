@@ -77,8 +77,8 @@ grabs and marco's bindings keep working.
 - [x] Menu window: open and close rules, state reset on each opening, window type (SPEC section 4)
 - [x] Classic placement: next to the button, within the monitor, vertical panels, reduced size on small monitors
 - [x] Category list and app list, tooltips, scrollbars only when needed
-- [ ] Rollover setting
-- [ ] Launching: home folder, startup notification, error message (SPEC section 17)
+- [x] Rollover setting
+- [x] Launching: home folder, startup notification, error message (SPEC section 17)
 - [ ] Panel button: icon, label, label hidden on vertical panels, pressed state
 - [ ] Icons follow the icon theme, HiDPI, fallback icon
 - [ ] Manual test by maintainer

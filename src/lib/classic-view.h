@@ -27,6 +27,10 @@ void       mocka_classic_view_reset   (MockaClassicView *self);
 /* Rebuilt from the data, keeping nothing. */
 void       mocka_classic_view_rebuild (MockaClassicView *self);
 
+/* Hovering a category selects it, off by default (SPEC section 6). */
+void       mocka_classic_view_set_rollover (MockaClassicView *self,
+                                            gboolean          rollover);
+
 /* The size the menu asks for before the monitor is taken into account. */
 #define MOCKA_CLASSIC_WANT_WIDTH  480
 #define MOCKA_CLASSIC_WANT_HEIGHT 480
