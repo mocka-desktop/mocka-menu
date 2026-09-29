@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Dual Tool
+Comment=Listed in two categories
+Exec=echo
+Categories=Network;Office;

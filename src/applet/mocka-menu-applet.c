@@ -12,6 +12,7 @@
 #include <gtk/gtk.h>
 #include <mate-panel-applet.h>
 
+#include "menu-window.h"
 #include "mocka-menu.h"
 
 #define MOCKA_MENU_FACTORY_ID "MockaMenuAppletFactory"
@@ -31,6 +32,7 @@ struct _MockaMenuApplet
 
   GtkWidget *button;
   GtkWidget *image;
+  GtkWidget *menu_window;
   GSettings *settings;  /* shared by every applet, not owned (SPEC section 15) */
 };
 
@@ -93,6 +95,22 @@ on_change_size (MockaMenuApplet *self,
 }
 
 static void
+on_button_clicked (MockaMenuApplet *self)
+{
+  mocka_menu_window_toggle (MOCKA_MENU_WINDOW (self->menu_window), self->button);
+}
+
+static void
+mocka_menu_applet_dispose (GObject *object)
+{
+  MockaMenuApplet *self = MOCKA_MENU_APPLET (object);
+
+  g_clear_pointer (&self->menu_window, gtk_widget_destroy);
+
+  G_OBJECT_CLASS (mocka_menu_applet_parent_class)->dispose (object);
+}
+
+static void
 mocka_menu_applet_init (MockaMenuApplet *self)
 {
 }
@@ -100,6 +118,7 @@ mocka_menu_applet_init (MockaMenuApplet *self)
 static void
 mocka_menu_applet_class_init (MockaMenuAppletClass *klass)
 {
+  G_OBJECT_CLASS (klass)->dispose = mocka_menu_applet_dispose;
 }
 
 static void
@@ -115,8 +134,12 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
   gtk_container_add (GTK_CONTAINER (self->button), self->image);
   gtk_container_add (GTK_CONTAINER (self), self->button);
 
-  /* The menu window itself arrives in M1, so the button does nothing yet. */
   gtk_widget_set_tooltip_text (self->button, _("Menu"));
+
+  /* Left click toggles the menu (SPEC section 3). */
+  self->menu_window = mocka_menu_window_new ();
+  g_signal_connect_swapped (self->button, "clicked",
+                            G_CALLBACK (on_button_clicked), self);
 
   mate_panel_applet_set_flags (applet, MATE_PANEL_APPLET_EXPAND_MINOR);
 

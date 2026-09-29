@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=apple sauce
+Comment=Lower case, to catch byte order sorting
+Exec=wc
+Categories=Office;

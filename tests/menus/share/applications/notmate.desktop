@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Not In MATE
+Exec=tail
+Categories=Network;
+NotShowIn=MATE;

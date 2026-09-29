@@ -1,11 +1,15 @@
 mocka_menu_headers = files(
   'mocka-menu.h',
+  'menu-data.h',
+  'menu-window.h',
 )
 
 mocka_menu_lib = shared_library('mocka-menu',
   'mocka-menu.c',
+  'menu-data.c',
+  'menu-window.c',
   include_directories: config_inc,
-  dependencies: [gio_dep, gtk_dep],
+  dependencies: [gio_dep, gtk_dep, mate_menu_dep],
   version: meson.project_version(),
   soversion: '0',
   install: true,
@@ -24,5 +28,5 @@ pkgconfig.generate(mocka_menu_lib,
   name: 'mocka-menu',
   description: 'Mocka Menu without the MATE panel applet glue',
   subdirs: 'mocka-menu',
-  requires: ['gio-unix-2.0', 'gtk+-3.0'],
+  requires: ['gio-unix-2.0', 'gtk+-3.0', 'libmate-menu'],
 )

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Only In GNOME
+Exec=uname
+Categories=Network;
+OnlyShowIn=GNOME;

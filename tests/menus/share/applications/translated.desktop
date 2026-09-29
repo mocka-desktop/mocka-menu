@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Translated App
+Name[fr]=Application traduite
+Comment=Has a French name
+Comment[fr]=A un nom français
+Exec=sleep
+Categories=Office;

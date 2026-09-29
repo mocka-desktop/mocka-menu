@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Only In MATE
+Exec=head
+Categories=Network;
+OnlyShowIn=MATE;

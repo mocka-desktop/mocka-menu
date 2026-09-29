@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Éditeur
+Comment=Accented, to catch byte order sorting
+Exec=printf
+Categories=Office;

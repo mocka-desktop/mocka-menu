@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Hidden App
+Exec=false
+Categories=Network;
+Hidden=true

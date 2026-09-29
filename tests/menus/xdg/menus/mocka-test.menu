@@ -1,0 +1,25 @@
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+ "http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">
+<!-- Test menu tree for the unit tests. Never the user's real menu. -->
+<Menu>
+  <Name>Applications</Name>
+  <Directory>mocka-test.directory</Directory>
+  <DefaultAppDirs/>
+  <DefaultDirectoryDirs/>
+
+  <Menu>
+    <Name>Internet</Name>
+    <Directory>mocka-test-internet.directory</Directory>
+    <Include>
+      <Category>Network</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Office</Name>
+    <Directory>mocka-test-office.directory</Directory>
+    <Include>
+      <Category>Office</Category>
+    </Include>
+  </Menu>
+</Menu>

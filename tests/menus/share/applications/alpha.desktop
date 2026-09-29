@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Alpha Browser
+Comment=Browses things
+Exec=cat
+Icon=web-browser
+Categories=Network;

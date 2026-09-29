@@ -68,13 +68,13 @@ grabs and marco's bindings keep working.
 - [x] Verify libmate-menu loads the menu tree on GhostBSD, including the settings menu for Preferences and Administration
 - [x] Verify on GhostBSD with LightDM and ConsoleKit2: `org.gnome.SessionManager` (Logout, Shutdown), `org.mate.ScreenSaver` (Lock), and `org.freedesktop.DisplayManager.Seat` (SwitchToGreeter) at `XDG_SEAT_PATH`
 - [x] Verify whether an executable desktop entry copied to `~/Desktop` runs in Caja without a trust prompt (SPEC section 23)
-- [ ] Port skeleton in the GhostBSD ports overlay (draft only, stashed until the M3 alpha)
+- [x] Port skeleton in the GhostBSD ports overlay (draft only, stashed until the alpha). `x11/mocka-menu` in ghostbsd-ports, stashed with `git stash`; needs `make makesum` once the alpha is tagged
 - [ ] Manual test by maintainer
 
 ## M1: Menu data and Classic layout
 
-- [ ] Menu data: categories, "All", deduplication, hidden and `OnlyShowIn`/`NotShowIn` entries, locale sorting, translated names, with unit tests against `tests/menus/`
-- [ ] Menu window: open and close rules, state reset on each opening, window type (SPEC section 4)
+- [x] Menu data: categories, "All", deduplication, hidden and `OnlyShowIn`/`NotShowIn` entries, locale sorting, translated names, with unit tests against `tests/menus/`
+- [x] Menu window: open and close rules, state reset on each opening, window type (SPEC section 4)
 - [ ] Classic placement: next to the button, within the monitor, vertical panels, reduced size on small monitors
 - [ ] Category list and app list, tooltips, scrollbars only when needed
 - [ ] Rollover setting
@@ -92,7 +92,7 @@ grabs and marco's bindings keep working.
 - [ ] Hotkey ownership across applets: the owner holds an X manager selection, other applets watch it and take over when the owner goes away
 - [ ] Manual test by maintainer
 
-## M3: Favourites, session controls, app menu (first alpha)
+## M3: Favourites, session controls, app menu
 
 - [ ] `favourite-apps` storage and live updates, uninstalled apps skipped and kept
 - [ ] Favourites column: launch, tooltips, scrolling, drag to add, drag to reorder
@@ -102,10 +102,6 @@ grabs and marco's bindings keep working.
 - [ ] Button menu: Edit Menus, About, panel items. Preferences stays hidden until M5; settings are changed with `gsettings` meanwhile
 - [ ] Default `favourite-apps` (SPEC section 20)
 - [ ] Manual test by maintainer
-- [ ] Add `x11/mocka-menu` to ghostbsd-ports from the stashed draft, pointing at the alpha
-- [ ] GhostBSD override for `favourite-apps` adding `software-station.desktop`, in ghostbsd-mate-settings
-- [ ] User guide on the project wiki, first version for testers
-- [ ] Alpha release for GhostBSD testers
 
 ## M4: Launcher layout
 
@@ -119,7 +115,7 @@ grabs and marco's bindings keep working.
 - [ ] Manual test with the compositor on and off
 - [ ] Decide vertical scrolling or paging (SPEC section 23)
 
-## M5: Live updates, panel search, preferences
+## M5: Live updates, panel search, preferences (first alpha)
 
 - [ ] Change debounce, background rebuild, swap when closed
 - [ ] Diff and splice while open, keeping category, search, scroll, and selection, with unit tests for the diff
@@ -128,6 +124,10 @@ grabs and marco's bindings keep working.
 - [ ] Preferences window for every setting in SPEC section 15, changes applied immediately
 - [ ] Preferences in the button menu
 - [ ] Manual test by maintainer
+- [ ] Add `x11/mocka-menu` to ghostbsd-ports from the stashed draft, pointing at the alpha
+- [ ] GhostBSD override for `favourite-apps` adding `software-station.desktop`, in ghostbsd-mate-settings
+- [ ] User guide on the project wiki, first version for testers
+- [ ] Alpha release for GhostBSD testers
 
 ## M6: Mocka Dock integration
 

@@ -18,7 +18,7 @@ menu applets.
 Early development. The specification and the plan are written, the code is not
 started yet. The work is split into milestones in [PLAN.md](PLAN.md), from the
 skeleton and its risk checks in M0 to release 0.0.1 in M7, with a first alpha for
-GhostBSD testers at M3.
+GhostBSD testers at M5, once both layouts and the preferences window are in.
 
 Planned for 0.0.1:
 
