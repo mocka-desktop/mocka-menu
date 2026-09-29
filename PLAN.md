@@ -67,7 +67,7 @@ grabs and marco's bindings keep working.
 - [x] Verify a window covering the whole monitor, panels included, under marco (Launcher). Covers the panels, dims the desktop with the compositor and is solid without it. Only one monitor here, so which monitor it lands on is retested when a second one is available
 - [x] Verify libmate-menu loads the menu tree on GhostBSD, including the settings menu for Preferences and Administration
 - [x] Verify on GhostBSD with LightDM and ConsoleKit2: `org.gnome.SessionManager` (Logout, Shutdown), `org.mate.ScreenSaver` (Lock), and `org.freedesktop.DisplayManager.Seat` (SwitchToGreeter) at `XDG_SEAT_PATH`
-- [ ] Verify whether an executable desktop entry copied to `~/Desktop` runs in Caja without a trust prompt (SPEC section 23)
+- [x] Verify whether an executable desktop entry copied to `~/Desktop` runs in Caja without a trust prompt (SPEC section 23)
 - [ ] Port skeleton in the GhostBSD ports overlay (draft only, stashed until the M3 alpha)
 - [ ] Manual test by maintainer
 
