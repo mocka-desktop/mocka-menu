@@ -126,6 +126,41 @@ static guint view_signals[N_VIEW_SIGNALS];
 static void
 show_apps (MockaClassicView *self, GPtrArray *apps);
 
+/*
+ * The icon to draw, swapped for a generic one only when the theme has none of
+ * the names this icon carries (SPEC section 16).
+ *
+ * This cannot be decided when the icon is read. GTK searches theme by theme
+ * and tries every name of an icon within each theme, so an icon carrying both
+ * its own name and a generic one resolves to whichever the first theme
+ * happens to have, which is usually the generic one. Applications installed
+ * for one user keep their icons in hicolor, late in that search, so they
+ * would lose to the generic icon every time.
+ *
+ * Returns a reference the caller owns.
+ */
+static GIcon *
+icon_to_draw (GIcon *icon, const gchar *generic)
+{
+  GtkIconTheme *theme = gtk_icon_theme_get_default ();
+  const gchar * const *names;
+
+  if (icon == NULL)
+    return g_themed_icon_new (generic);
+
+  if (!G_IS_THEMED_ICON (icon))
+    return g_object_ref (icon);
+
+  names = g_themed_icon_get_names (G_THEMED_ICON (icon));
+  for (gsize i = 0; names != NULL && names[i] != NULL; i++)
+    {
+      if (gtk_icon_theme_has_icon (theme, names[i]))
+        return g_object_ref (icon);
+    }
+
+  return g_themed_icon_new (generic);
+}
+
 /* gtk_widget_destroy does not have the shape gtk_container_foreach wants. */
 static void
 destroy_row (GtkWidget *widget, gpointer user_data)
@@ -139,11 +174,13 @@ make_app_row (MockaMenuApp *app)
 {
   GtkWidget *row = gtk_list_box_row_new ();
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, ROW_SPACING);
-  GtkWidget *image = gtk_image_new_from_gicon (mocka_menu_app_get_icon (app),
-                                               GTK_ICON_SIZE_LARGE_TOOLBAR);
+  GIcon *icon = icon_to_draw (mocka_menu_app_get_icon (app),
+                              "application-x-executable");
+  GtkWidget *image = gtk_image_new_from_gicon (icon, GTK_ICON_SIZE_LARGE_TOOLBAR);
   GtkWidget *label = gtk_label_new (mocka_menu_app_get_name (app));
   const gchar *comment = mocka_menu_app_get_comment (app);
 
+  g_object_unref (icon);
   gtk_image_set_pixel_size (GTK_IMAGE (image), APP_ICON_SIZE);
   gtk_label_set_xalign (GTK_LABEL (label), 0.0);
   gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
@@ -172,8 +209,10 @@ make_category_row (const gchar *name, GIcon *icon)
 
   if (icon != NULL)
     {
-      GtkWidget *image = gtk_image_new_from_gicon (icon, GTK_ICON_SIZE_MENU);
+      GIcon *drawn = icon_to_draw (icon, "folder");
+      GtkWidget *image = gtk_image_new_from_gicon (drawn, GTK_ICON_SIZE_MENU);
 
+      g_object_unref (drawn);
       gtk_image_set_pixel_size (GTK_IMAGE (image), CATEGORY_ICON_SIZE);
       gtk_box_pack_start (GTK_BOX (box), image, FALSE, FALSE, 0);
     }

@@ -72,47 +72,30 @@ mocka_menu_app_init (MockaMenuApp *self)
 }
 
 /*
- * The icon to show, with a generic one behind it, so an entry naming an icon
- * the theme does not have still shows something (SPEC section 16).
+ * The icon to show. A name is left exactly as the entry gave it: GTK looks
+ * for icons theme by theme, trying every name of an icon within each theme
+ * before moving on, so adding a generic name here would let a theme that has
+ * the generic one win over hicolor, where many application icons live. The
+ * generic icon is chosen when it is drawn instead, once the theme is known.
  *
- * A themed icon carries a list of names and GTK takes the first the theme
- * has, so the fallback is simply added to the end of that list.
+ * Only what can be judged without a theme is settled here: no icon at all,
+ * and an entry pointing at an icon file that is no longer there.
  */
 static GIcon *
-icon_with_fallback (GIcon *icon, const gchar *fallback)
+icon_or_generic (GIcon *icon, const gchar *generic)
 {
-  const gchar * const *names;
-  GPtrArray *with_fallback;
-  GIcon *result;
-
   if (icon == NULL)
-    return g_themed_icon_new (fallback);
+    return g_themed_icon_new (generic);
 
-  /* An entry may point at an icon file that is not there any more. */
   if (G_IS_FILE_ICON (icon))
     {
       GFile *file = g_file_icon_get_file (G_FILE_ICON (icon));
 
-      if (file != NULL && g_file_query_exists (file, NULL))
-        return g_object_ref (icon);
-
-      return g_themed_icon_new (fallback);
+      if (file == NULL || !g_file_query_exists (file, NULL))
+        return g_themed_icon_new (generic);
     }
 
-  if (!G_IS_THEMED_ICON (icon))
-    return g_object_ref (icon);
-
-  names = g_themed_icon_get_names (G_THEMED_ICON (icon));
-  with_fallback = g_ptr_array_new ();
-  for (gsize i = 0; names != NULL && names[i] != NULL; i++)
-    g_ptr_array_add (with_fallback, (gpointer) names[i]);
-  g_ptr_array_add (with_fallback, (gpointer) fallback);
-
-  result = g_themed_icon_new_from_names ((gchar **) with_fallback->pdata,
-                                         (gint) with_fallback->len);
-  g_ptr_array_unref (with_fallback);
-
-  return result;
+  return g_object_ref (icon);
 }
 
 static MockaMenuApp *
@@ -128,7 +111,7 @@ mocka_menu_app_new (const gchar *id, GDesktopAppInfo *info)
   self->comment = g_strdup (g_app_info_get_description (base));
 
   icon = g_app_info_get_icon (base);
-  self->icon = icon_with_fallback (icon, "application-x-executable");
+  self->icon = icon_or_generic (icon, "application-x-executable");
 
   /* Collation keys sort the way the user's language expects, unlike the
    * bytes of the name. */
@@ -377,7 +360,7 @@ category_for_directory (MateMenuTreeDirectory *directory)
 
   self->id = g_strdup (matemenu_tree_directory_get_menu_id (directory));
   self->name = g_strdup (matemenu_tree_directory_get_name (directory));
-  self->icon = icon_with_fallback (icon, "folder");
+  self->icon = icon_or_generic (icon, "folder");
 
   return self;
 }

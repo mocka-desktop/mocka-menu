@@ -188,11 +188,19 @@ test_translated_names (void)
 }
 
 /*
- * An entry naming an icon no theme has still ends up with something to draw:
- * the generic application icon is added behind it (SPEC section 16).
+ * An entry's icon name is kept exactly as it gave it, with no generic name
+ * added behind it.
+ *
+ * This is the regression test for a real bug. GTK searches theme by theme and
+ * tries every name of an icon within each theme, so an icon carrying its own
+ * name plus a generic one resolved to whichever the first theme had, which is
+ * normally the generic one. Applications installed for a single user keep
+ * their icons in hicolor, searched last, so every one of them drew a generic
+ * icon. Choosing the generic icon is the drawing code's job, once it knows
+ * what the theme actually has.
  */
 static void
-test_icon_fallback (void)
+test_icon_name_is_untouched (void)
 {
   MockaMenuData *data = load_test_menu ();
   GPtrArray *all = mocka_menu_data_get_all_apps (data);
@@ -201,20 +209,17 @@ test_icon_fallback (void)
   for (guint i = 0; i < all->len; i++)
     {
       MockaMenuApp *app = g_ptr_array_index (all, i);
-      GIcon *icon;
       const gchar * const *names;
 
       if (g_strcmp0 (mocka_menu_app_get_id (app), "badicon.desktop") != 0)
         continue;
 
-      icon = mocka_menu_app_get_icon (app);
-      g_assert_true (G_IS_THEMED_ICON (icon));
+      names = g_themed_icon_get_names (
+          G_THEMED_ICON (mocka_menu_app_get_icon (app)));
 
-      names = g_themed_icon_get_names (G_THEMED_ICON (icon));
-      /* What the entry asked for comes first, the fallback behind it. */
       g_assert_cmpstr (names[0], ==, "zzz-not-a-real-icon");
-      g_assert_true (g_strv_contains ((const gchar * const *) names,
-                                      "application-x-executable"));
+      g_assert_false (g_strv_contains ((const gchar * const *) names,
+                                       "application-x-executable"));
       checked = TRUE;
     }
 
@@ -222,7 +227,7 @@ test_icon_fallback (void)
   g_object_unref (data);
 }
 
-/* An entry with no icon at all still gets the generic one. */
+/* An entry with no icon at all does get the generic one: no theme needed. */
 static void
 test_icon_when_absent (void)
 {
@@ -263,7 +268,7 @@ main (int argc, char **argv)
   g_test_add_func ("/menu-data/deduplication", test_deduplication);
   g_test_add_func ("/menu-data/locale-sorting", test_locale_sorting);
   g_test_add_func ("/menu-data/translated-names", test_translated_names);
-  g_test_add_func ("/menu-data/icon-fallback", test_icon_fallback);
+  g_test_add_func ("/menu-data/icon-name-untouched", test_icon_name_is_untouched);
   g_test_add_func ("/menu-data/icon-when-absent", test_icon_when_absent);
 
   return g_test_run ();
