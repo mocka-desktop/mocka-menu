@@ -10,6 +10,12 @@ compiler. Meson, same project defaults as mocka-dock (`c_std=c11`,
 `warning_level=2`, flags added through `cc.get_supported_arguments()` so older
 Clang versions do not fail on unknown flags).
 
+`tools/analyze.sh` runs the Clang static analyser over every source file, with
+the flags the build uses, and exits non-zero on any finding. It drives
+`clang --analyze` from `compile_commands.json` rather than `scan-build`, which
+keeps it to the base compiler. The build must be warning-free and the analyser
+must be clean before a release.
+
 ## Dependencies
 
 `gtk+-3.0`, `libmatepanelapplet-4.0`, `libmate-menu`, `gio-unix-2.0`, `x11`,
@@ -79,9 +85,9 @@ grabs and marco's bindings keep working.
 - [x] Category list and app list, tooltips, scrollbars only when needed
 - [x] Rollover setting
 - [x] Launching: home folder, startup notification, error message (SPEC section 17)
-- [ ] Panel button: icon, label, label hidden on vertical panels, pressed state
-- [ ] Icons follow the icon theme, HiDPI, fallback icon
-- [ ] Manual test by maintainer
+- [x] Panel button: icon, label, label hidden on vertical panels, pressed state
+- [x] Icons follow the icon theme, HiDPI, fallback icon
+- [x] Manual test by maintainer
 
 ## M2: Search, keyboard, and Super key
 
@@ -143,4 +149,5 @@ grabs and marco's bindings keep working.
 - [ ] User guide on the wiki brought up to date with everything added since the alpha
 - [ ] README update
 - [ ] Performance check: RSS, idle CPU, time to show the menu, 500+ desktop entries
+- [ ] Warning-free build and a clean `tools/analyze.sh`
 - [ ] Tag 0.0.1, update the GhostBSD port, submit `x11/mocka-menu` to FreeBSD ports

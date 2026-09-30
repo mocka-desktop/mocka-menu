@@ -97,6 +97,9 @@ mocka_classic_view_place (const GdkRectangle *anchor,
 /* The settings application the Settings shortcut opens (SPEC section 6). */
 #define SETTINGS_DESKTOP_ID "matecc.desktop"
 
+/* The Preferences icon. preferences-system is Administration's. */
+#define SETTINGS_ICON_NAME "preferences-desktop"
+
 struct _MockaClassicView
 {
   GtkBox parent_instance;
@@ -159,6 +162,7 @@ make_app_row (MockaMenuApp *app)
   return row;
 }
 
+/* icon is borrowed: the image takes its own reference. */
 static GtkWidget *
 make_category_row (const gchar *name, GIcon *icon)
 {
@@ -327,8 +331,10 @@ mocka_classic_view_rebuild (MockaClassicView *self)
       gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), FALSE);
       gtk_container_add (GTK_CONTAINER (self->category_list), row);
 
-      row = make_category_row (_("Settings"),
-                               g_themed_icon_new ("preferences-system"));
+      GIcon *settings_icon = g_themed_icon_new (SETTINGS_ICON_NAME);
+
+      row = make_category_row (_("Settings"), settings_icon);
+      g_object_unref (settings_icon);
       gtk_list_box_row_set_selectable (GTK_LIST_BOX_ROW (row), FALSE);
       g_object_set_data_full (G_OBJECT (row), "settings-app",
                               g_object_ref (settings), g_object_unref);

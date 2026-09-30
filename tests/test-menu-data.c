@@ -187,6 +187,70 @@ test_translated_names (void)
   g_object_unref (data);
 }
 
+/*
+ * An entry naming an icon no theme has still ends up with something to draw:
+ * the generic application icon is added behind it (SPEC section 16).
+ */
+static void
+test_icon_fallback (void)
+{
+  MockaMenuData *data = load_test_menu ();
+  GPtrArray *all = mocka_menu_data_get_all_apps (data);
+  gboolean checked = FALSE;
+
+  for (guint i = 0; i < all->len; i++)
+    {
+      MockaMenuApp *app = g_ptr_array_index (all, i);
+      GIcon *icon;
+      const gchar * const *names;
+
+      if (g_strcmp0 (mocka_menu_app_get_id (app), "badicon.desktop") != 0)
+        continue;
+
+      icon = mocka_menu_app_get_icon (app);
+      g_assert_true (G_IS_THEMED_ICON (icon));
+
+      names = g_themed_icon_get_names (G_THEMED_ICON (icon));
+      /* What the entry asked for comes first, the fallback behind it. */
+      g_assert_cmpstr (names[0], ==, "zzz-not-a-real-icon");
+      g_assert_true (g_strv_contains ((const gchar * const *) names,
+                                      "application-x-executable"));
+      checked = TRUE;
+    }
+
+  g_assert_true (checked);
+  g_object_unref (data);
+}
+
+/* An entry with no icon at all still gets the generic one. */
+static void
+test_icon_when_absent (void)
+{
+  MockaMenuData *data = load_test_menu ();
+  GPtrArray *all = mocka_menu_data_get_all_apps (data);
+  gboolean checked = FALSE;
+
+  for (guint i = 0; i < all->len; i++)
+    {
+      MockaMenuApp *app = g_ptr_array_index (all, i);
+      GIcon *icon;
+
+      if (g_strcmp0 (mocka_menu_app_get_id (app), "beta.desktop") != 0)
+        continue;
+
+      icon = mocka_menu_app_get_icon (app);
+      g_assert_nonnull (icon);
+      g_assert_true (G_IS_THEMED_ICON (icon));
+      g_assert_true (g_strv_contains (
+          (const gchar * const *) g_themed_icon_get_names (G_THEMED_ICON (icon)),
+          "application-x-executable"));
+      checked = TRUE;
+    }
+
+  g_assert_true (checked);
+  g_object_unref (data);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -199,6 +263,8 @@ main (int argc, char **argv)
   g_test_add_func ("/menu-data/deduplication", test_deduplication);
   g_test_add_func ("/menu-data/locale-sorting", test_locale_sorting);
   g_test_add_func ("/menu-data/translated-names", test_translated_names);
+  g_test_add_func ("/menu-data/icon-fallback", test_icon_fallback);
+  g_test_add_func ("/menu-data/icon-when-absent", test_icon_when_absent);
 
   return g_test_run ();
 }

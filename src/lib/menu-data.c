@@ -71,6 +71,50 @@ mocka_menu_app_init (MockaMenuApp *self)
 {
 }
 
+/*
+ * The icon to show, with a generic one behind it, so an entry naming an icon
+ * the theme does not have still shows something (SPEC section 16).
+ *
+ * A themed icon carries a list of names and GTK takes the first the theme
+ * has, so the fallback is simply added to the end of that list.
+ */
+static GIcon *
+icon_with_fallback (GIcon *icon, const gchar *fallback)
+{
+  const gchar * const *names;
+  GPtrArray *with_fallback;
+  GIcon *result;
+
+  if (icon == NULL)
+    return g_themed_icon_new (fallback);
+
+  /* An entry may point at an icon file that is not there any more. */
+  if (G_IS_FILE_ICON (icon))
+    {
+      GFile *file = g_file_icon_get_file (G_FILE_ICON (icon));
+
+      if (file != NULL && g_file_query_exists (file, NULL))
+        return g_object_ref (icon);
+
+      return g_themed_icon_new (fallback);
+    }
+
+  if (!G_IS_THEMED_ICON (icon))
+    return g_object_ref (icon);
+
+  names = g_themed_icon_get_names (G_THEMED_ICON (icon));
+  with_fallback = g_ptr_array_new ();
+  for (gsize i = 0; names != NULL && names[i] != NULL; i++)
+    g_ptr_array_add (with_fallback, (gpointer) names[i]);
+  g_ptr_array_add (with_fallback, (gpointer) fallback);
+
+  result = g_themed_icon_new_from_names ((gchar **) with_fallback->pdata,
+                                         (gint) with_fallback->len);
+  g_ptr_array_unref (with_fallback);
+
+  return result;
+}
+
 static MockaMenuApp *
 mocka_menu_app_new (const gchar *id, GDesktopAppInfo *info)
 {
@@ -84,8 +128,7 @@ mocka_menu_app_new (const gchar *id, GDesktopAppInfo *info)
   self->comment = g_strdup (g_app_info_get_description (base));
 
   icon = g_app_info_get_icon (base);
-  if (icon != NULL)
-    self->icon = g_object_ref (icon);
+  self->icon = icon_with_fallback (icon, "application-x-executable");
 
   /* Collation keys sort the way the user's language expects, unlike the
    * bytes of the name. */
@@ -334,8 +377,7 @@ category_for_directory (MateMenuTreeDirectory *directory)
 
   self->id = g_strdup (matemenu_tree_directory_get_menu_id (directory));
   self->name = g_strdup (matemenu_tree_directory_get_name (directory));
-  if (icon != NULL)
-    self->icon = g_object_ref (icon);
+  self->icon = icon_with_fallback (icon, "folder");
 
   return self;
 }

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Bad Icon
+Comment=Names an icon no theme has
+Exec=ls
+Icon=zzz-not-a-real-icon
+Categories=Office;

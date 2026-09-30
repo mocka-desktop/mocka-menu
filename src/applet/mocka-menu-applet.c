@@ -25,6 +25,9 @@
 #define BUTTON_PADDING 4
 #define MIN_ICON_SIZE  16
 
+/* Between the icon and the label, when the label is shown. */
+#define LABEL_SPACING 6
+
 #define MOCKA_TYPE_MENU_APPLET (mocka_menu_applet_get_type ())
 G_DECLARE_FINAL_TYPE (MockaMenuApplet, mocka_menu_applet, MOCKA, MENU_APPLET,
                       MatePanelApplet)
@@ -35,6 +38,7 @@ struct _MockaMenuApplet
 
   GtkWidget *button;
   GtkWidget *image;
+  GtkWidget *label;
   GtkWidget *menu_window;
   GtkWidget *view;
   MockaMenuData *data;
@@ -117,6 +121,30 @@ panel_side_for_orient (MatePanelAppletOrient orient)
     }
 }
 
+/* A vertical panel has no room for a label (SPEC section 3). */
+static gboolean
+orient_is_vertical (MatePanelAppletOrient orient)
+{
+  return orient == MATE_PANEL_APPLET_ORIENT_LEFT
+      || orient == MATE_PANEL_APPLET_ORIENT_RIGHT;
+}
+
+static void
+update_label (MockaMenuApplet *self)
+{
+  MatePanelAppletOrient orient =
+    mate_panel_applet_get_orient (MATE_PANEL_APPLET (self));
+  gboolean wanted = g_settings_get_boolean (self->settings, "label-visible");
+  gchar *text = g_settings_get_string (self->settings, "label-text");
+
+  /* Empty means the translated default (SPEC section 15). */
+  gtk_label_set_text (GTK_LABEL (self->label),
+                      (text != NULL && *text != '\0') ? text : _("Menu"));
+  gtk_widget_set_visible (self->label, wanted && !orient_is_vertical (orient));
+
+  g_free (text);
+}
+
 static void
 on_change_orient (MockaMenuApplet       *self,
                   MatePanelAppletOrient  orient,
@@ -124,6 +152,20 @@ on_change_orient (MockaMenuApplet       *self,
 {
   mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window),
                                     panel_side_for_orient (orient));
+  update_label (self);
+}
+
+/* The button shows as pressed while the menu is open (SPEC section 3). */
+static void
+on_menu_opened (MockaMenuApplet *self)
+{
+  gtk_widget_set_state_flags (self->button, GTK_STATE_FLAG_ACTIVE, FALSE);
+}
+
+static void
+on_menu_closed (MockaMenuApplet *self)
+{
+  gtk_widget_unset_state_flags (self->button, GTK_STATE_FLAG_ACTIVE);
 }
 
 static void
@@ -214,13 +256,19 @@ static void
 mocka_menu_applet_setup (MockaMenuApplet *self)
 {
   MatePanelApplet *applet = MATE_PANEL_APPLET (self);
+  GtkWidget *box;
 
   self->settings = mocka_menu_get_settings ();
 
   self->image = gtk_image_new ();
+  self->label = gtk_label_new (NULL);
+  box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, LABEL_SPACING);
+  gtk_box_pack_start (GTK_BOX (box), self->image, FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (box), self->label, FALSE, FALSE, 0);
+
   self->button = gtk_button_new ();
   gtk_button_set_relief (GTK_BUTTON (self->button), GTK_RELIEF_NONE);
-  gtk_container_add (GTK_CONTAINER (self->button), self->image);
+  gtk_container_add (GTK_CONTAINER (self->button), box);
   gtk_container_add (GTK_CONTAINER (self), self->button);
 
   gtk_widget_set_tooltip_text (self->button, _("Menu"));
@@ -234,6 +282,14 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
   g_signal_connect (self, "change-orient", G_CALLBACK (on_change_orient), NULL);
   g_signal_connect_swapped (self->menu_window, "reset",
                             G_CALLBACK (on_menu_reset), self);
+  g_signal_connect_swapped (self->menu_window, "opened",
+                            G_CALLBACK (on_menu_opened), self);
+  g_signal_connect_swapped (self->menu_window, "closed",
+                            G_CALLBACK (on_menu_closed), self);
+  g_signal_connect_swapped (self->settings, "changed::label-visible",
+                            G_CALLBACK (update_label), self);
+  g_signal_connect_swapped (self->settings, "changed::label-text",
+                            G_CALLBACK (update_label), self);
   build_menu_contents (self);
 
   mate_panel_applet_set_flags (applet, MATE_PANEL_APPLET_EXPAND_MINOR);
@@ -248,6 +304,8 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
 
   update_icon (self);
   gtk_widget_show_all (GTK_WIDGET (self));
+  /* After show_all, which would otherwise reveal a label meant to be hidden. */
+  update_label (self);
 }
 
 static gboolean
