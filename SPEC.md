@@ -1,6 +1,6 @@
 # Mocka Menu Specification
 
-Status: draft 1
+Status: draft 2
 Component: `mocka-menu`
 License: BSD-3-Clause
 
@@ -78,10 +78,14 @@ The menu window closes when:
 
 Every time the menu opens it starts from the same state:
 
-- Search is empty and has keyboard focus.
-- The "All" category is selected.
+- Search is empty, with no cursor in it.
+- The "All" category is selected, and the category list has the keyboard
+  focus.
 - The app list or grid is scrolled to the top.
 - Nothing is left over from the previous opening.
+
+The search entry takes the keyboard focus only when the user types or clicks
+it, however the menu was opened.
 
 ### Window behavior
 
@@ -348,7 +352,7 @@ the layout while the menu is closed.
 |---|---|
 | Typing | Goes to the search entry |
 | Up, Down | Move the selection in the list, or by row in the grid |
-| Left, Right | Move the selection by column in the grid |
+| Left, Right | Move between the category list and the app list. In the grid, move the selection by column |
 | Page Up, Page Down | Move the selection by one page |
 | Home, End | Select the first or last item |
 | Tab, Shift + Tab | Move focus between search, favourites, categories, apps, and session controls |
@@ -358,6 +362,10 @@ the layout while the menu is closed.
 | Escape | Clear the search. With an empty search, close the menu |
 
 Keyboard focus is always visible.
+
+The category list has the focus when the menu opens (section 4), so Up and
+Down move through the categories at once and Right moves across to the apps.
+Typing puts the cursor in the search entry and searches, from either list.
 
 ## 13. Mocka Dock integration
 
