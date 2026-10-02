@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Qqqb Two
+Keywords=cinema;projector;
+Comment=Matches only through its keywords
+Exec=tee
+Categories=Office;

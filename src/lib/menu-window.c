@@ -32,20 +32,27 @@ struct _MockaMenuWindow
   GtkWindow parent_instance;
 
   GtkWidget *content_area;
-  GdkSeat   *held_seat;     /* while open, the seat we grabbed */
-  GtkWidget *anchor;        /* the panel button, not owned */
+  GdkSeat *held_seat; /* while open, the seat we grabbed */
+  GtkWidget *anchor;  /* the panel button, not owned */
   GtkPositionType panel_side;
-  gboolean   open;
-  guint32    closed_at;     /* event time of the last close on the anchor */
+  gboolean open;
+  guint32 closed_at; /* event time of the last close on the anchor */
 };
 
 G_DEFINE_TYPE (MockaMenuWindow, mocka_menu_window, GTK_TYPE_WINDOW)
 
-enum {
+enum
+{
   SIGNAL_OPENED,
   SIGNAL_CLOSED,
   /* Emitted before the window is shown, so the layout can start clean. */
   SIGNAL_RESET,
+  /*
+   * Emitted on Escape. A handler that returns TRUE has dealt with it, by
+   * clearing the search for instance, and the menu stays open. With nothing
+   * to deal with, Escape closes it (SPEC section 12.2).
+   */
+  SIGNAL_ESCAPE,
   N_SIGNALS
 };
 
@@ -64,22 +71,32 @@ widget_root_rect (GtkWidget *widget, GdkRectangle *out)
   GtkWidget *toplevel;
   GdkWindow *window;
   GtkAllocation alloc;
-  gint top_x = 0, top_y = 0;
-  gint origin_x = 0, origin_y = 0;
+  gint top_x = 0;
+  gint top_y = 0;
+  gint origin_x = 0;
+  gint origin_y = 0;
 
   if (widget == NULL || !gtk_widget_get_realized (widget))
-    return FALSE;
+    {
+      return FALSE;
+    }
 
   toplevel = gtk_widget_get_toplevel (widget);
   if (toplevel == NULL)
-    return FALSE;
+    {
+      return FALSE;
+    }
 
   window = gtk_widget_get_window (toplevel);
   if (window == NULL)
-    return FALSE;
+    {
+      return FALSE;
+    }
 
   if (!gtk_widget_translate_coordinates (widget, toplevel, 0, 0, &top_x, &top_y))
-    return FALSE;
+    {
+      return FALSE;
+    }
 
   gdk_window_get_origin (window, &origin_x, &origin_y);
   gtk_widget_get_allocation (widget, &alloc);
@@ -100,21 +117,22 @@ widget_root_rect (GtkWidget *widget, GdkRectangle *out)
  * mean the same thing in both, so the test has to be made in those.
  */
 static gboolean
-on_button_press (GtkWidget      *widget,
-                 GdkEventButton *event,
-                 gpointer        user_data)
+on_button_press (GtkWidget *widget, GdkEventButton *event, gpointer user_data)
 {
   MockaMenuWindow *self = MOCKA_MENU_WINDOW (widget);
   GdkRectangle rect;
-  gint root_x = (gint) event->x_root;
-  gint root_y = (gint) event->y_root;
+  gint root_x = (gint)event->x_root;
+  gint root_y = (gint)event->y_root;
 
   if (!widget_root_rect (GTK_WIDGET (self), &rect))
-    return GDK_EVENT_PROPAGATE;
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
 
-  if (root_x >= rect.x && root_x < rect.x + rect.width
-      && root_y >= rect.y && root_y < rect.y + rect.height)
-    return GDK_EVENT_PROPAGATE;
+  if (root_x >= rect.x && root_x < rect.x + rect.width && root_y >= rect.y && root_y < rect.y + rect.height)
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
 
   /* The same click may reach the panel button next, which would open the
    * menu again, so disarm that. */
@@ -125,17 +143,19 @@ on_button_press (GtkWidget      *widget,
 }
 
 static gboolean
-on_key_press (GtkWidget   *widget,
-              GdkEventKey *event,
-              gpointer     user_data)
+on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 {
-  /*
-   * Escape closes. Once there is a search entry it clears the search first
-   * and only closes when the search is already empty (SPEC section 12.2).
-   */
   if (event->keyval == GDK_KEY_Escape)
     {
-      mocka_menu_window_close (MOCKA_MENU_WINDOW (widget));
+      gboolean handled = FALSE;
+
+      /* The layout clears its search first, if it has one to clear. */
+      g_signal_emit (widget, signals[SIGNAL_ESCAPE], 0, &handled);
+      if (!handled)
+        {
+          mocka_menu_window_close (MOCKA_MENU_WINDOW (widget));
+        }
+
       return GDK_EVENT_STOP;
     }
 
@@ -144,13 +164,11 @@ on_key_press (GtkWidget   *widget,
 
 /* Something else took the pointer or the keyboard, so we are no longer a menu. */
 static gboolean
-on_grab_broken (GtkWidget          *widget,
-                GdkEventGrabBroken *event,
-                gpointer            user_data)
+on_grab_broken (GtkWidget *widget, GdkEventGrabBroken *event, gpointer user_data)
 {
   MockaMenuWindow *self = MOCKA_MENU_WINDOW (widget);
 
-  self->held_seat = NULL;  /* the grab is already gone */
+  self->held_seat = NULL; /* the grab is already gone */
   mocka_menu_window_close (self);
   return GDK_EVENT_PROPAGATE;
 }
@@ -169,8 +187,7 @@ mocka_menu_window_init (MockaMenuWindow *self)
   gtk_window_set_skip_pager_hint (window, TRUE);
   gtk_window_set_type_hint (window, GDK_WINDOW_TYPE_HINT_POPUP_MENU);
 
-  gtk_widget_add_events (GTK_WIDGET (self),
-                         GDK_BUTTON_PRESS_MASK | GDK_KEY_PRESS_MASK);
+  gtk_widget_add_events (GTK_WIDGET (self), GDK_BUTTON_PRESS_MASK | GDK_KEY_PRESS_MASK);
 
   self->content_area = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
   gtk_container_add (GTK_CONTAINER (self), self->content_area);
@@ -184,15 +201,14 @@ mocka_menu_window_init (MockaMenuWindow *self)
 static void
 mocka_menu_window_class_init (MockaMenuWindowClass *klass)
 {
-  signals[SIGNAL_OPENED] =
-    g_signal_new ("opened", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
-                  0, NULL, NULL, NULL, G_TYPE_NONE, 0);
-  signals[SIGNAL_CLOSED] =
-    g_signal_new ("closed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
-                  0, NULL, NULL, NULL, G_TYPE_NONE, 0);
-  signals[SIGNAL_RESET] =
-    g_signal_new ("reset", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
-                  0, NULL, NULL, NULL, G_TYPE_NONE, 0);
+  signals[SIGNAL_OPENED]
+      = g_signal_new ("opened", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
+  signals[SIGNAL_CLOSED]
+      = g_signal_new ("closed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
+  signals[SIGNAL_RESET]
+      = g_signal_new ("reset", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
+  signals[SIGNAL_ESCAPE] = g_signal_new ("escape", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
+                                         g_signal_accumulator_true_handled, NULL, NULL, G_TYPE_BOOLEAN, 0);
 }
 
 GtkWidget *
@@ -233,17 +249,23 @@ place_near_anchor (MockaMenuWindow *self, GtkWidget *anchor)
   GdkDisplay *display;
   GdkMonitor *monitor;
   GtkRequisition natural;
+  GtkRequisition want;
 
   if (!widget_root_rect (anchor, &anchor_rect))
-    return;
+    {
+      return;
+    }
 
   display = gtk_widget_get_display (anchor);
-  monitor = gdk_display_get_monitor_at_window (display,
-                                               gtk_widget_get_window (anchor));
+  monitor = gdk_display_get_monitor_at_window (display, gtk_widget_get_window (anchor));
   if (monitor == NULL)
-    monitor = gdk_display_get_primary_monitor (display);
+    {
+      monitor = gdk_display_get_primary_monitor (display);
+    }
   if (monitor == NULL)
-    return;
+    {
+      return;
+    }
 
   gdk_monitor_get_geometry (monitor, &monitor_rect);
 
@@ -255,11 +277,9 @@ place_near_anchor (MockaMenuWindow *self, GtkWidget *anchor)
    */
   gtk_widget_get_preferred_size (self->content_area, NULL, &natural);
 
-  placed = mocka_classic_view_place (&anchor_rect, &monitor_rect,
-                                     self->panel_side,
-                                     MAX (natural.width, MOCKA_CLASSIC_WANT_WIDTH),
-                                     MAX (natural.height, MOCKA_CLASSIC_WANT_HEIGHT));
-
+  want.width = MAX (natural.width, MOCKA_CLASSIC_WANT_WIDTH);
+  want.height = MAX (natural.height, MOCKA_CLASSIC_WANT_HEIGHT);
+  placed = mocka_classic_view_place (&anchor_rect, &monitor_rect, self->panel_side, want);
 
   gtk_widget_set_size_request (GTK_WIDGET (self), placed.width, placed.height);
   gtk_window_resize (GTK_WINDOW (self), placed.width, placed.height);
@@ -275,7 +295,9 @@ mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor)
   g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
 
   if (self->open)
-    return;
+    {
+      return;
+    }
 
   self->anchor = anchor;
 
@@ -286,13 +308,21 @@ mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor)
   place_near_anchor (self, anchor);
   gtk_widget_show (GTK_WIDGET (self));
 
+  /* The device grab uses owner_events, so clicks on the panel and its other
+   * applets reach them, not us. A GTK grab sends those here too. */
+  gtk_grab_add (GTK_WIDGET (self));
+
   seat = gdk_display_get_default_seat (gtk_widget_get_display (GTK_WIDGET (self)));
-  status = gdk_seat_grab (seat, gtk_widget_get_window (GTK_WIDGET (self)),
-                          GDK_SEAT_CAPABILITY_ALL, TRUE, NULL, NULL, NULL, NULL);
+  status = gdk_seat_grab (seat, gtk_widget_get_window (GTK_WIDGET (self)), GDK_SEAT_CAPABILITY_ALL, TRUE, NULL, NULL,
+                          NULL, NULL);
   if (status == GDK_GRAB_SUCCESS)
-    self->held_seat = seat;
+    {
+      self->held_seat = seat;
+    }
   else
-    g_warning ("mocka-menu: could not grab the pointer and keyboard");
+    {
+      g_warning ("mocka-menu: could not grab the pointer and keyboard");
+    }
 
   self->open = TRUE;
   g_signal_emit (self, signals[SIGNAL_OPENED], 0);
@@ -304,13 +334,17 @@ mocka_menu_window_close (MockaMenuWindow *self)
   g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
 
   if (!self->open)
-    return;
+    {
+      return;
+    }
 
   if (self->held_seat != NULL)
     {
       gdk_seat_ungrab (self->held_seat);
       self->held_seat = NULL;
     }
+
+  gtk_grab_remove (GTK_WIDGET (self));
 
   gtk_widget_hide (GTK_WIDGET (self));
   self->open = FALSE;
@@ -322,7 +356,6 @@ mocka_menu_window_toggle (MockaMenuWindow *self, GtkWidget *anchor)
 {
   g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
 
-
   if (self->open)
     {
       mocka_menu_window_close (self);
@@ -330,8 +363,7 @@ mocka_menu_window_toggle (MockaMenuWindow *self, GtkWidget *anchor)
     }
 
   /* The click that just closed us is not a click to open us again. */
-  if (self->closed_at != 0
-      && gtk_get_current_event_time () - self->closed_at < REOPEN_GUARD_MS)
+  if (self->closed_at != 0 && gtk_get_current_event_time () - self->closed_at < REOPEN_GUARD_MS)
     {
       self->closed_at = 0;
       return;

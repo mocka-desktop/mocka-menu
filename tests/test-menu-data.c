@@ -13,7 +13,7 @@
 
 #include "menu-data.h"
 
-static const gchar * const test_menus[] = { "mocka-test.menu", NULL };
+static const gchar *const test_menus[] = { "mocka-test.menu", NULL };
 
 static MockaMenuData *
 load_test_menu (void)
@@ -37,7 +37,9 @@ find_category (MockaMenuData *data, const gchar *id)
       MockaMenuCategory *category = g_ptr_array_index (categories, i);
 
       if (g_strcmp0 (mocka_menu_category_get_id (category), id) == 0)
-        return category;
+        {
+          return category;
+        }
     }
 
   return NULL;
@@ -49,7 +51,9 @@ has_app (GPtrArray *apps, const gchar *id)
   for (guint i = 0; i < apps->len; i++)
     {
       if (g_strcmp0 (mocka_menu_app_get_id (g_ptr_array_index (apps, i)), id) == 0)
-        return TRUE;
+        {
+          return TRUE;
+        }
     }
 
   return FALSE;
@@ -61,7 +65,9 @@ index_of_name (GPtrArray *apps, const gchar *name)
   for (guint i = 0; i < apps->len; i++)
     {
       if (g_strcmp0 (mocka_menu_app_get_name (g_ptr_array_index (apps, i)), name) == 0)
-        return (gint) i;
+        {
+          return (gint)i;
+        }
     }
 
   return -1;
@@ -76,8 +82,7 @@ test_categories (void)
   g_assert_cmpuint (categories->len, ==, 2);
   g_assert_nonnull (find_category (data, "Internet"));
   g_assert_nonnull (find_category (data, "Office"));
-  g_assert_cmpstr (mocka_menu_category_get_name (find_category (data, "Internet")),
-                   ==, "Internet");
+  g_assert_cmpstr (mocka_menu_category_get_name (find_category (data, "Internet")), ==, "Internet");
 
   g_object_unref (data);
 }
@@ -108,16 +113,15 @@ test_deduplication (void)
   GPtrArray *all = mocka_menu_data_get_all_apps (data);
   guint seen = 0;
 
-  g_assert_true (has_app (mocka_menu_category_get_apps (find_category (data, "Internet")),
-                          "dual.desktop"));
-  g_assert_true (has_app (mocka_menu_category_get_apps (find_category (data, "Office")),
-                          "dual.desktop"));
+  g_assert_true (has_app (mocka_menu_category_get_apps (find_category (data, "Internet")), "dual.desktop"));
+  g_assert_true (has_app (mocka_menu_category_get_apps (find_category (data, "Office")), "dual.desktop"));
 
   for (guint i = 0; i < all->len; i++)
     {
-      if (g_strcmp0 (mocka_menu_app_get_id (g_ptr_array_index (all, i)),
-                     "dual.desktop") == 0)
-        seen++;
+      if (g_strcmp0 (mocka_menu_app_get_id (g_ptr_array_index (all, i)), "dual.desktop") == 0)
+        {
+          seen++;
+        }
     }
   g_assert_cmpuint (seen, ==, 1);
 
@@ -209,17 +213,17 @@ test_icon_name_is_untouched (void)
   for (guint i = 0; i < all->len; i++)
     {
       MockaMenuApp *app = g_ptr_array_index (all, i);
-      const gchar * const *names;
+      const gchar *const *names;
 
       if (g_strcmp0 (mocka_menu_app_get_id (app), "badicon.desktop") != 0)
-        continue;
+        {
+          continue;
+        }
 
-      names = g_themed_icon_get_names (
-          G_THEMED_ICON (mocka_menu_app_get_icon (app)));
+      names = g_themed_icon_get_names (G_THEMED_ICON (mocka_menu_app_get_icon (app)));
 
       g_assert_cmpstr (names[0], ==, "zzz-not-a-real-icon");
-      g_assert_false (g_strv_contains ((const gchar * const *) names,
-                                       "application-x-executable"));
+      g_assert_false (g_strv_contains ((const gchar *const *)names, "application-x-executable"));
       checked = TRUE;
     }
 
@@ -241,14 +245,15 @@ test_icon_when_absent (void)
       GIcon *icon;
 
       if (g_strcmp0 (mocka_menu_app_get_id (app), "beta.desktop") != 0)
-        continue;
+        {
+          continue;
+        }
 
       icon = mocka_menu_app_get_icon (app);
       g_assert_nonnull (icon);
       g_assert_true (G_IS_THEMED_ICON (icon));
-      g_assert_true (g_strv_contains (
-          (const gchar * const *) g_themed_icon_get_names (G_THEMED_ICON (icon)),
-          "application-x-executable"));
+      g_assert_true (g_strv_contains ((const gchar *const *)g_themed_icon_get_names (G_THEMED_ICON (icon)),
+                                      "application-x-executable"));
       checked = TRUE;
     }
 

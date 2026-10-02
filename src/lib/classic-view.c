@@ -9,23 +9,23 @@
 #include <glib/gi18n-lib.h>
 
 #include "classic-view.h"
+#include "search.h"
 
 /* Keeps a value inside a range even when the range itself is empty. */
 static gint
 clamp_into (gint value, gint low, gint high)
 {
   if (high < low)
-    return low;
+    {
+      return low;
+    }
 
   return CLAMP (value, low, high);
 }
 
 GdkRectangle
-mocka_classic_view_place (const GdkRectangle *anchor,
-                          const GdkRectangle *monitor,
-                          GtkPositionType     panel_side,
-                          gint                want_width,
-                          gint                want_height)
+mocka_classic_view_place (const GdkRectangle *anchor, const GdkRectangle *monitor, GtkPositionType panel_side,
+                          GtkRequisition want)
 {
   GdkRectangle out;
   gint room_width;
@@ -57,8 +57,8 @@ mocka_classic_view_place (const GdkRectangle *anchor,
       break;
     }
 
-  out.width = MAX (MIN (want_width, room_width), MOCKA_CLASSIC_MIN_WIDTH);
-  out.height = MAX (MIN (want_height, room_height), MOCKA_CLASSIC_MIN_HEIGHT);
+  out.width = MAX (MIN (want.width, room_width), MOCKA_CLASSIC_MIN_WIDTH);
+  out.height = MAX (MIN (want.height, room_height), MOCKA_CLASSIC_MIN_HEIGHT);
 
   /* Against the button, on the side facing the screen. */
   switch (panel_side)
@@ -104,8 +104,12 @@ struct _MockaClassicView
 {
   GtkBox parent_instance;
 
-  MockaMenuData *data;        /* not owned */
+  MockaMenuData *data; /* not owned */
 
+  GtkWidget *entry;
+  GtkWidget *columns;       /* the category list beside the app list */
+  GtkWidget *left_column;   /* the categories, with Settings under them */
+  GtkWidget *settings_list; /* the Settings shortcut, never a category */
   GtkWidget *category_list;
   GtkWidget *category_scroller;
   GtkWidget *app_list;
@@ -116,15 +120,15 @@ struct _MockaClassicView
 
 G_DEFINE_TYPE (MockaClassicView, mocka_classic_view, GTK_TYPE_BOX)
 
-enum {
+enum
+{
   SIGNAL_APP_ACTIVATED,
   N_VIEW_SIGNALS
 };
 
 static guint view_signals[N_VIEW_SIGNALS];
 
-static void
-show_apps (MockaClassicView *self, GPtrArray *apps);
+static void show_apps (MockaClassicView *self, GPtrArray *apps);
 
 /*
  * The icon to draw, swapped for a generic one only when the theme has none of
@@ -143,19 +147,25 @@ static GIcon *
 icon_to_draw (GIcon *icon, const gchar *generic)
 {
   GtkIconTheme *theme = gtk_icon_theme_get_default ();
-  const gchar * const *names;
+  const gchar *const *names;
 
   if (icon == NULL)
-    return g_themed_icon_new (generic);
+    {
+      return g_themed_icon_new (generic);
+    }
 
   if (!G_IS_THEMED_ICON (icon))
-    return g_object_ref (icon);
+    {
+      return g_object_ref (icon);
+    }
 
   names = g_themed_icon_get_names (G_THEMED_ICON (icon));
   for (gsize i = 0; names != NULL && names[i] != NULL; i++)
     {
       if (gtk_icon_theme_has_icon (theme, names[i]))
-        return g_object_ref (icon);
+        {
+          return g_object_ref (icon);
+        }
     }
 
   return g_themed_icon_new (generic);
@@ -174,15 +184,14 @@ make_app_row (MockaMenuApp *app)
 {
   GtkWidget *row = gtk_list_box_row_new ();
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, ROW_SPACING);
-  GIcon *icon = icon_to_draw (mocka_menu_app_get_icon (app),
-                              "application-x-executable");
+  GIcon *icon = icon_to_draw (mocka_menu_app_get_icon (app), "application-x-executable");
   GtkWidget *image = gtk_image_new_from_gicon (icon, GTK_ICON_SIZE_LARGE_TOOLBAR);
   GtkWidget *label = gtk_label_new (mocka_menu_app_get_name (app));
   const gchar *comment = mocka_menu_app_get_comment (app);
 
   g_object_unref (icon);
   gtk_image_set_pixel_size (GTK_IMAGE (image), APP_ICON_SIZE);
-  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0F);
   gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
 
   gtk_box_pack_start (GTK_BOX (box), image, FALSE, FALSE, 0);
@@ -191,10 +200,11 @@ make_app_row (MockaMenuApp *app)
   gtk_container_add (GTK_CONTAINER (row), box);
 
   if (comment != NULL && *comment != '\0')
-    gtk_widget_set_tooltip_text (row, comment);
+    {
+      gtk_widget_set_tooltip_text (row, comment);
+    }
 
-  g_object_set_data_full (G_OBJECT (row), "app", g_object_ref (app),
-                          g_object_unref);
+  g_object_set_data_full (G_OBJECT (row), "app", g_object_ref (app), g_object_unref);
 
   return row;
 }
@@ -217,7 +227,7 @@ make_category_row (const gchar *name, GIcon *icon)
       gtk_box_pack_start (GTK_BOX (box), image, FALSE, FALSE, 0);
     }
 
-  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+  gtk_label_set_xalign (GTK_LABEL (label), 0.0F);
   gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
   gtk_box_pack_start (GTK_BOX (box), label, TRUE, TRUE, 0);
   gtk_container_set_border_width (GTK_CONTAINER (box), ROW_PADDING);
@@ -232,63 +242,131 @@ make_category_row (const gchar *name, GIcon *icon)
  * here, so the event coordinates are the list's own.
  */
 static gboolean
-on_category_motion (GtkWidget        *widget,
-                    GdkEventMotion   *event,
-                    MockaClassicView *self)
+on_category_motion (GtkWidget *widget, GdkEventMotion *event, MockaClassicView *self)
 {
   GtkListBoxRow *row;
 
   if (!self->rollover)
-    return GDK_EVENT_PROPAGATE;
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
 
-  row = gtk_list_box_get_row_at_y (GTK_LIST_BOX (self->category_list),
-                                   (gint) event->y);
+  row = gtk_list_box_get_row_at_y (GTK_LIST_BOX (self->category_list), (gint)event->y);
 
   /* The Settings shortcut is not selectable, so hovering it selects nothing. */
   if (row != NULL && gtk_list_box_row_get_selectable (row))
-    gtk_list_box_select_row (GTK_LIST_BOX (self->category_list), row);
+    {
+      gtk_list_box_select_row (GTK_LIST_BOX (self->category_list), row);
+    }
 
   return GDK_EVENT_PROPAGATE;
 }
 
-static void
-on_category_selected (GtkListBox       *list,
-                      GtkListBoxRow    *row,
-                      MockaClassicView *self)
+/* The apps of whichever category is selected, or all of them. */
+static GPtrArray *
+apps_of_selected_category (MockaClassicView *self)
 {
-  MockaMenuCategory *category;
+  GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->category_list));
+  MockaMenuCategory *category = row != NULL ? g_object_get_data (G_OBJECT (row), "category") : NULL;
 
-  if (row == NULL)
-    return;
-
-  category = g_object_get_data (G_OBJECT (row), "category");
   if (category != NULL)
-    show_apps (self, mocka_menu_category_get_apps (category));
-  else
-    show_apps (self, mocka_menu_data_get_all_apps (self->data));
+    {
+      return mocka_menu_category_get_apps (category);
+    }
+
+  return mocka_menu_data_get_all_apps (self->data);
+}
+
+static void
+on_category_selected (GtkListBox *list, GtkListBoxRow *row, MockaClassicView *self)
+{
+  if (row == NULL)
+    {
+      return;
+    }
+
+  /* While there is search text the category selection is ignored
+   * (SPEC section 6). */
+  if (mocka_classic_view_is_searching (self))
+    {
+      return;
+    }
+
+  show_apps (self, apps_of_selected_category (self));
+}
+
+/*
+ * Results replace the category's apps while there is text, and the category
+ * comes back when the text goes (SPEC section 9.1).
+ */
+static void
+on_search_changed (GtkSearchEntry *entry, MockaClassicView *self)
+{
+  const gchar *text = gtk_entry_get_text (GTK_ENTRY (entry));
+  GPtrArray *results;
+
+  /* The categories are greyed while searching, since the selection counts for
+   * nothing until the search is cleared (SPEC section 6). */
+  gtk_widget_set_sensitive (self->category_scroller, text == NULL || *text == '\0');
+
+  if (text == NULL || *text == '\0')
+    {
+      show_apps (self, apps_of_selected_category (self));
+      return;
+    }
+
+  /* Favourites come first within a rank; the list of them arrives in M3. */
+  results = mocka_search_run (mocka_menu_data_get_all_apps (self->data), text, NULL);
+  show_apps (self, results);
+  g_ptr_array_unref (results);
+}
+
+/*
+ * Typing anywhere in the menu goes to the search entry (SPEC section 9.1).
+ * Key events reach the focused widget first and then travel up to here, so
+ * this only sees what the lists did not use, such as ordinary text.
+ */
+static gboolean
+on_key_press (GtkWidget *widget, GdkEventKey *event, MockaClassicView *self)
+{
+  if (gtk_widget_has_focus (self->entry))
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
+
+  if (!gtk_search_entry_handle_event (GTK_SEARCH_ENTRY (self->entry), (GdkEvent *)event))
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
+
+  /* It took the key, so the cursor belongs there too. */
+  gtk_widget_grab_focus (self->entry);
+  gtk_editable_set_position (GTK_EDITABLE (self->entry), -1);
+
+  return GDK_EVENT_STOP;
 }
 
 /* The Settings shortcut is not a category: it launches (SPEC section 6). */
 static void
-on_category_activated (GtkListBox       *list,
-                       GtkListBoxRow    *row,
-                       MockaClassicView *self)
+on_category_activated (GtkListBox *list, GtkListBoxRow *row, MockaClassicView *self)
 {
   MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "settings-app");
 
   if (app != NULL)
-    g_signal_emit (self, view_signals[SIGNAL_APP_ACTIVATED], 0, app);
+    {
+      g_signal_emit (self, view_signals[SIGNAL_APP_ACTIVATED], 0, app);
+    }
 }
 
 static void
-on_app_activated (GtkListBox       *list,
-                  GtkListBoxRow    *row,
-                  MockaClassicView *self)
+on_app_activated (GtkListBox *list, GtkListBoxRow *row, MockaClassicView *self)
 {
   MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "app");
 
   if (app != NULL)
-    g_signal_emit (self, view_signals[SIGNAL_APP_ACTIVATED], 0, app);
+    {
+      g_signal_emit (self, view_signals[SIGNAL_APP_ACTIVATED], 0, app);
+    }
 }
 
 static void
@@ -308,8 +386,7 @@ show_apps (MockaClassicView *self, GPtrArray *apps)
   gtk_widget_show_all (self->app_list);
 
   /* A new category starts at the top of its list. */
-  adjustment = gtk_scrolled_window_get_vadjustment (
-      GTK_SCROLLED_WINDOW (self->app_scroller));
+  adjustment = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->app_scroller));
   gtk_adjustment_set_value (adjustment, gtk_adjustment_get_lower (adjustment));
 }
 
@@ -324,7 +401,9 @@ find_settings_app (MockaClassicView *self)
       MockaMenuApp *app = g_ptr_array_index (all, i);
 
       if (g_strcmp0 (mocka_menu_app_get_id (app), SETTINGS_DESKTOP_ID) == 0)
-        return app;
+        {
+          return app;
+        }
     }
 
   return NULL;
@@ -342,7 +421,7 @@ mocka_classic_view_rebuild (MockaClassicView *self)
   gtk_container_foreach (GTK_CONTAINER (self->category_list), destroy_row, NULL);
 
   /* "All" first, then the categories in menu order (SPEC section 6). */
-  row = make_category_row (_("All"), NULL);
+  row = make_category_row (_ ("All"), NULL);
   gtk_container_add (GTK_CONTAINER (self->category_list), row);
 
   categories = mocka_menu_data_get_categories (self->data);
@@ -350,39 +429,41 @@ mocka_classic_view_rebuild (MockaClassicView *self)
     {
       MockaMenuCategory *category = g_ptr_array_index (categories, i);
 
-      row = make_category_row (mocka_menu_category_get_name (category),
-                               mocka_menu_category_get_icon (category));
-      g_object_set_data_full (G_OBJECT (row), "category",
-                              g_object_ref (category), g_object_unref);
+      row = make_category_row (mocka_menu_category_get_name (category), mocka_menu_category_get_icon (category));
+      g_object_set_data_full (G_OBJECT (row), "category", g_object_ref (category), g_object_unref);
       gtk_container_add (GTK_CONTAINER (self->category_list), row);
     }
 
-  /* Then, separated from them, the Settings shortcut (SPEC section 6). */
+  /*
+   * The Settings shortcut sits under the categories but is not one of them,
+   * so it lives in its own list (SPEC section 6). That also keeps it usable
+   * while a search greys the categories out.
+   */
+  gtk_container_foreach (GTK_CONTAINER (self->settings_list), destroy_row, NULL);
+
   settings = find_settings_app (self);
   if (settings != NULL)
     {
       const gchar *comment = mocka_menu_app_get_comment (settings);
-
-      row = gtk_list_box_row_new ();
-      gtk_container_add (GTK_CONTAINER (row),
-                         gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
-      gtk_list_box_row_set_selectable (GTK_LIST_BOX_ROW (row), FALSE);
-      gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), FALSE);
-      gtk_container_add (GTK_CONTAINER (self->category_list), row);
-
       GIcon *settings_icon = g_themed_icon_new (SETTINGS_ICON_NAME);
 
-      row = make_category_row (_("Settings"), settings_icon);
+      row = make_category_row (_ ("Settings"), settings_icon);
       g_object_unref (settings_icon);
       gtk_list_box_row_set_selectable (GTK_LIST_BOX_ROW (row), FALSE);
-      g_object_set_data_full (G_OBJECT (row), "settings-app",
-                              g_object_ref (settings), g_object_unref);
+      g_object_set_data_full (G_OBJECT (row), "settings-app", g_object_ref (settings), g_object_unref);
       if (comment != NULL && *comment != '\0')
-        gtk_widget_set_tooltip_text (row, comment);
-      gtk_container_add (GTK_CONTAINER (self->category_list), row);
+        {
+          gtk_widget_set_tooltip_text (row, comment);
+        }
+      gtk_container_add (GTK_CONTAINER (self->settings_list), row);
     }
 
+  gtk_widget_set_visible (self->settings_list, settings != NULL);
   gtk_widget_show_all (self->category_list);
+  if (settings != NULL)
+    {
+      gtk_widget_show_all (self->settings_list);
+    }
   mocka_classic_view_reset (self);
 }
 
@@ -394,75 +475,98 @@ mocka_classic_view_reset (MockaClassicView *self)
 
   g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
 
+  /* Search empty and focused, "All" selected, scrolled to the top
+   * (SPEC section 4). */
+  gtk_entry_set_text (GTK_ENTRY (self->entry), "");
+  gtk_widget_set_sensitive (self->category_scroller, TRUE);
+  gtk_widget_grab_focus (self->entry);
+
   first = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->category_list), 0);
   if (first != NULL)
-    gtk_list_box_select_row (GTK_LIST_BOX (self->category_list), first);
+    {
+      gtk_list_box_select_row (GTK_LIST_BOX (self->category_list), first);
+    }
 
   show_apps (self, mocka_menu_data_get_all_apps (self->data));
 
-  adjustment = gtk_scrolled_window_get_vadjustment (
-      GTK_SCROLLED_WINDOW (self->category_scroller));
+  adjustment = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->category_scroller));
   gtk_adjustment_set_value (adjustment, gtk_adjustment_get_lower (adjustment));
 }
 
 static void
 mocka_classic_view_init (MockaClassicView *self)
 {
-  gtk_orientable_set_orientation (GTK_ORIENTABLE (self),
-                                  GTK_ORIENTATION_HORIZONTAL);
+  GtkWidget *placeholder;
+
+  /* The entry spans the width, above or below the two columns. */
+  gtk_orientable_set_orientation (GTK_ORIENTABLE (self), GTK_ORIENTATION_VERTICAL);
+  self->columns = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 
   self->category_list = gtk_list_box_new ();
-  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->category_list),
-                                   GTK_SELECTION_BROWSE);
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->category_list), GTK_SELECTION_BROWSE);
 
   self->category_scroller = gtk_scrolled_window_new (NULL, NULL);
   /* A scrollbar only when it does not fit (SPEC section 6). */
-  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self->category_scroller),
-                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self->category_scroller), GTK_POLICY_NEVER,
+                                  GTK_POLICY_AUTOMATIC);
   /*
    * The categories ask for their whole width and height, so the column is as
    * wide as the longest name and tall enough to show every category. Either
    * is given up, with a scrollbar or an ellipsis, only when the monitor
    * cannot fit it.
    */
-  gtk_scrolled_window_set_propagate_natural_width (
-      GTK_SCROLLED_WINDOW (self->category_scroller), TRUE);
-  gtk_scrolled_window_set_propagate_natural_height (
-      GTK_SCROLLED_WINDOW (self->category_scroller), TRUE);
+  gtk_scrolled_window_set_propagate_natural_width (GTK_SCROLLED_WINDOW (self->category_scroller), TRUE);
+  gtk_scrolled_window_set_propagate_natural_height (GTK_SCROLLED_WINDOW (self->category_scroller), TRUE);
   gtk_container_add (GTK_CONTAINER (self->category_scroller), self->category_list);
 
   self->app_list = gtk_list_box_new ();
-  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->app_list),
-                                   GTK_SELECTION_BROWSE);
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->app_list), GTK_SELECTION_BROWSE);
 
   self->app_scroller = gtk_scrolled_window_new (NULL, NULL);
-  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self->app_scroller),
-                                  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self->app_scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
   gtk_container_add (GTK_CONTAINER (self->app_scroller), self->app_list);
 
-  gtk_box_pack_start (GTK_BOX (self), self->category_scroller, FALSE, FALSE, 0);
-  gtk_box_pack_start (GTK_BOX (self),
-                      gtk_separator_new (GTK_ORIENTATION_VERTICAL),
-                      FALSE, FALSE, 0);
-  gtk_box_pack_start (GTK_BOX (self), self->app_scroller, TRUE, TRUE, 0);
+  /* Shown by the list itself whenever it holds nothing (SPEC section 9.1). */
+  placeholder = gtk_label_new (_ ("No results"));
+  gtk_widget_set_sensitive (placeholder, FALSE);
+  gtk_widget_show (placeholder);
+  gtk_list_box_set_placeholder (GTK_LIST_BOX (self->app_list), placeholder);
+
+  /* Categories, then a line, then Settings: outside the scrolled list so it
+   * stays put and stays usable. */
+  self->settings_list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->settings_list), GTK_SELECTION_NONE);
+
+  self->left_column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+  gtk_box_pack_start (GTK_BOX (self->left_column), self->category_scroller, TRUE, TRUE, 0);
+  gtk_box_pack_start (GTK_BOX (self->left_column), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (self->left_column), self->settings_list, FALSE, FALSE, 0);
+
+  gtk_box_pack_start (GTK_BOX (self->columns), self->left_column, FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (self->columns), gtk_separator_new (GTK_ORIENTATION_VERTICAL), FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (self->columns), self->app_scroller, TRUE, TRUE, 0);
+
+  self->entry = gtk_search_entry_new ();
+  gtk_entry_set_placeholder_text (GTK_ENTRY (self->entry), _ ("Search"));
+
+  gtk_box_pack_start (GTK_BOX (self), self->entry, FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (self), self->columns, TRUE, TRUE, 0);
+
+  g_signal_connect (self->entry, "search-changed", G_CALLBACK (on_search_changed), self);
+  g_signal_connect (self, "key-press-event", G_CALLBACK (on_key_press), self);
 
   gtk_widget_add_events (self->category_list, GDK_POINTER_MOTION_MASK);
-  g_signal_connect (self->category_list, "motion-notify-event",
-                    G_CALLBACK (on_category_motion), self);
-  g_signal_connect (self->category_list, "row-selected",
-                    G_CALLBACK (on_category_selected), self);
-  g_signal_connect (self->category_list, "row-activated",
-                    G_CALLBACK (on_category_activated), self);
-  g_signal_connect (self->app_list, "row-activated",
-                    G_CALLBACK (on_app_activated), self);
+  g_signal_connect (self->category_list, "motion-notify-event", G_CALLBACK (on_category_motion), self);
+  g_signal_connect (self->category_list, "row-selected", G_CALLBACK (on_category_selected), self);
+  g_signal_connect (self->settings_list, "row-activated", G_CALLBACK (on_category_activated), self);
+  g_signal_connect (self->app_list, "row-activated", G_CALLBACK (on_app_activated), self);
 }
 
 static void
 mocka_classic_view_class_init (MockaClassicViewClass *klass)
 {
-  view_signals[SIGNAL_APP_ACTIVATED] =
-    g_signal_new ("app-activated", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
-                  0, NULL, NULL, NULL, G_TYPE_NONE, 1, MOCKA_TYPE_MENU_APP);
+  view_signals[SIGNAL_APP_ACTIVATED] = g_signal_new ("app-activated", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
+                                                     NULL, NULL, NULL, G_TYPE_NONE, 1, MOCKA_TYPE_MENU_APP);
 }
 
 void
@@ -470,6 +574,34 @@ mocka_classic_view_set_rollover (MockaClassicView *self, gboolean rollover)
 {
   g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
   self->rollover = rollover;
+}
+
+void
+mocka_classic_view_set_search_position (MockaClassicView *self, MockaClassicSearchPosition position)
+{
+  g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
+
+  gtk_box_reorder_child (GTK_BOX (self), self->entry, position == MOCKA_CLASSIC_SEARCH_BOTTOM ? 1 : 0);
+}
+
+gboolean
+mocka_classic_view_is_searching (MockaClassicView *self)
+{
+  const gchar *text;
+
+  g_return_val_if_fail (MOCKA_IS_CLASSIC_VIEW (self), FALSE);
+
+  text = gtk_entry_get_text (GTK_ENTRY (self->entry));
+  return text != NULL && *text != '\0';
+}
+
+void
+mocka_classic_view_clear_search (MockaClassicView *self)
+{
+  g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
+
+  gtk_entry_set_text (GTK_ENTRY (self->entry), "");
+  gtk_widget_grab_focus (self->entry);
 }
 
 GtkWidget *

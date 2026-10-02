@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Qqqd Four
+Comment=Unpacks compressed bundles
+Exec=comm
+Categories=Office;

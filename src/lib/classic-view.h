@@ -15,29 +15,42 @@ G_BEGIN_DECLS
 /* The Classic layout (SPEC section 6). */
 
 #define MOCKA_TYPE_CLASSIC_VIEW (mocka_classic_view_get_type ())
-G_DECLARE_FINAL_TYPE (MockaClassicView, mocka_classic_view, MOCKA, CLASSIC_VIEW,
-                      GtkBox)
+G_DECLARE_FINAL_TYPE (MockaClassicView, mocka_classic_view, MOCKA, CLASSIC_VIEW, GtkBox)
 
 /* The category list and the app list. Does not own the data. */
-GtkWidget *mocka_classic_view_new     (MockaMenuData    *data);
+GtkWidget *mocka_classic_view_new (MockaMenuData *data);
 
 /* Back to "All", scrolled to the top, nothing selected (SPEC section 4). */
-void       mocka_classic_view_reset   (MockaClassicView *self);
+void mocka_classic_view_reset (MockaClassicView *self);
 
 /* Rebuilt from the data, keeping nothing. */
-void       mocka_classic_view_rebuild (MockaClassicView *self);
+void mocka_classic_view_rebuild (MockaClassicView *self);
 
 /* Hovering a category selects it, off by default (SPEC section 6). */
-void       mocka_classic_view_set_rollover (MockaClassicView *self,
-                                            gboolean          rollover);
+void mocka_classic_view_set_rollover (MockaClassicView *self, gboolean rollover);
+
+/* Where the search entry sits (SPEC section 9.3). */
+typedef enum
+{
+  MOCKA_CLASSIC_SEARCH_TOP,
+  MOCKA_CLASSIC_SEARCH_BOTTOM,
+} MockaClassicSearchPosition;
+
+void mocka_classic_view_set_search_position (MockaClassicView *self, MockaClassicSearchPosition position);
+
+/* Whether results are being shown rather than a category. */
+gboolean mocka_classic_view_is_searching (MockaClassicView *self);
+
+/* Empties the search, so the selected category shows again. */
+void mocka_classic_view_clear_search (MockaClassicView *self);
 
 /* The size the menu asks for before the monitor is taken into account. */
-#define MOCKA_CLASSIC_WANT_WIDTH  480
+#define MOCKA_CLASSIC_WANT_WIDTH 480
 #define MOCKA_CLASSIC_WANT_HEIGHT 480
 
 /* It never shrinks below this, even on a very small monitor. */
-#define MOCKA_CLASSIC_MIN_WIDTH   240
-#define MOCKA_CLASSIC_MIN_HEIGHT  240
+#define MOCKA_CLASSIC_MIN_WIDTH 240
+#define MOCKA_CLASSIC_MIN_HEIGHT 240
 
 /*
  * Where the menu window goes: next to the panel button, on the side facing
@@ -49,10 +62,7 @@ void       mocka_classic_view_set_rollover (MockaClassicView *self,
  *
  * Pure geometry, so it is tested without a panel or a display.
  */
-GdkRectangle mocka_classic_view_place (const GdkRectangle *anchor,
-                                       const GdkRectangle *monitor,
-                                       GtkPositionType     panel_side,
-                                       gint                want_width,
-                                       gint                want_height);
+GdkRectangle mocka_classic_view_place (const GdkRectangle *anchor, const GdkRectangle *monitor,
+                                       GtkPositionType panel_side, GtkRequisition want);
 
 G_END_DECLS

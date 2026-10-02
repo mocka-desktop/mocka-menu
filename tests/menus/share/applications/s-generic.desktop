@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Qqqa One
+GenericName=Ledger Sheet
+Comment=Matches only through its generic name
+Exec=uniq
+Categories=Office;

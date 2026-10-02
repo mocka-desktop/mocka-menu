@@ -16,8 +16,8 @@ G_BEGIN_DECLS
  * the Mocka project and not stable.
  */
 
-void         mocka_menu_init         (void);
-const gchar *mocka_menu_get_version  (void);
-GSettings   *mocka_menu_get_settings (void);
+void mocka_menu_init (void);
+const gchar *mocka_menu_get_version (void);
+GSettings *mocka_menu_get_settings (void);
 
 G_END_DECLS

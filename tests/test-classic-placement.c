@@ -8,6 +8,7 @@
 
 #include "classic-view.h"
 
+static const GtkRequisition want = { MOCKA_CLASSIC_WANT_WIDTH, MOCKA_CLASSIC_WANT_HEIGHT };
 #define WANT_W MOCKA_CLASSIC_WANT_WIDTH
 #define WANT_H MOCKA_CLASSIC_WANT_HEIGHT
 
@@ -18,8 +19,7 @@ static void
 test_bottom_panel (void)
 {
   GdkRectangle anchor = { 0, 1040, 40, 40 };
-  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd,
-                                               GTK_POS_BOTTOM, WANT_W, WANT_H);
+  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd, GTK_POS_BOTTOM, want);
 
   g_assert_cmpint (got.width, ==, WANT_W);
   g_assert_cmpint (got.height, ==, WANT_H);
@@ -32,8 +32,7 @@ static void
 test_top_panel (void)
 {
   GdkRectangle anchor = { 0, 0, 40, 40 };
-  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd,
-                                               GTK_POS_TOP, WANT_W, WANT_H);
+  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd, GTK_POS_TOP, want);
 
   g_assert_cmpint (got.y, ==, anchor.y + anchor.height);
   g_assert_cmpint (got.x, ==, 0);
@@ -44,8 +43,7 @@ static void
 test_left_panel (void)
 {
   GdkRectangle anchor = { 0, 500, 40, 40 };
-  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd,
-                                               GTK_POS_LEFT, WANT_W, WANT_H);
+  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd, GTK_POS_LEFT, want);
 
   g_assert_cmpint (got.x, ==, anchor.x + anchor.width);
   g_assert_cmpint (got.y, ==, anchor.y);
@@ -55,8 +53,7 @@ static void
 test_right_panel (void)
 {
   GdkRectangle anchor = { 1880, 500, 40, 40 };
-  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd,
-                                               GTK_POS_RIGHT, WANT_W, WANT_H);
+  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd, GTK_POS_RIGHT, want);
 
   g_assert_cmpint (got.x + got.width, ==, anchor.x);
   g_assert_cmpint (got.y, ==, anchor.y);
@@ -67,8 +64,7 @@ static void
 test_stays_on_monitor (void)
 {
   GdkRectangle anchor = { 1900, 1040, 20, 40 };
-  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd,
-                                               GTK_POS_BOTTOM, WANT_W, WANT_H);
+  GdkRectangle got = mocka_classic_view_place (&anchor, &monitor_hd, GTK_POS_BOTTOM, want);
 
   g_assert_cmpint (got.x, >=, monitor_hd.x);
   g_assert_cmpint (got.x + got.width, <=, monitor_hd.x + monitor_hd.width);
@@ -81,8 +77,7 @@ test_second_monitor (void)
 {
   GdkRectangle second = { 1920, 0, 1280, 1024 };
   GdkRectangle anchor = { 1920, 984, 40, 40 };
-  GdkRectangle got = mocka_classic_view_place (&anchor, &second,
-                                               GTK_POS_BOTTOM, WANT_W, WANT_H);
+  GdkRectangle got = mocka_classic_view_place (&anchor, &second, GTK_POS_BOTTOM, want);
 
   g_assert_cmpint (got.x, >=, second.x);
   g_assert_cmpint (got.x + got.width, <=, second.x + second.width);
@@ -95,8 +90,7 @@ test_small_monitor (void)
 {
   GdkRectangle small = { 0, 0, 800, 400 };
   GdkRectangle anchor = { 0, 360, 40, 40 };
-  GdkRectangle got = mocka_classic_view_place (&anchor, &small,
-                                               GTK_POS_BOTTOM, WANT_W, WANT_H);
+  GdkRectangle got = mocka_classic_view_place (&anchor, &small, GTK_POS_BOTTOM, want);
 
   g_assert_cmpint (got.height, <, WANT_H);
   g_assert_cmpint (got.height, ==, 360);
@@ -114,8 +108,7 @@ test_never_below_minimum (void)
 {
   GdkRectangle tiny = { 0, 0, 320, 200 };
   GdkRectangle anchor = { 0, 160, 40, 40 };
-  GdkRectangle got = mocka_classic_view_place (&anchor, &tiny,
-                                               GTK_POS_BOTTOM, WANT_W, WANT_H);
+  GdkRectangle got = mocka_classic_view_place (&anchor, &tiny, GTK_POS_BOTTOM, want);
 
   g_assert_cmpint (got.height, ==, MOCKA_CLASSIC_MIN_HEIGHT);
   g_assert_cmpint (got.width, ==, tiny.width);

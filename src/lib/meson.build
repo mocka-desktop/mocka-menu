@@ -4,6 +4,7 @@ mocka_menu_headers = files(
   'menu-window.h',
   'classic-view.h',
   'launch.h',
+  'search.h',
 )
 
 mocka_menu_lib = shared_library('mocka-menu',
@@ -12,6 +13,7 @@ mocka_menu_lib = shared_library('mocka-menu',
   'menu-window.c',
   'classic-view.c',
   'launch.c',
+  'search.c',
   include_directories: config_inc,
   dependencies: [gio_dep, gtk_dep, mate_menu_dep],
   version: meson.project_version(),

@@ -25,7 +25,7 @@
 #include "menu-data.h"
 
 /* The menus the desktop ships. Settings tools live in the second one. */
-static const gchar * const default_menus[] = {
+static const gchar *const default_menus[] = {
   "mate-applications.menu",
   "mate-settings.menu",
   NULL,
@@ -35,11 +35,11 @@ struct _MockaMenuApp
 {
   GObject parent_instance;
 
-  gchar           *id;
-  gchar           *name;
-  gchar           *comment;
-  gchar           *collate_key;  /* sorting, built once per app */
-  GIcon           *icon;
+  gchar *id;
+  gchar *name;
+  gchar *comment;
+  gchar *collate_key; /* sorting, built once per app */
+  GIcon *icon;
   GDesktopAppInfo *app_info;
 };
 
@@ -85,27 +85,31 @@ static GIcon *
 icon_or_generic (GIcon *icon, const gchar *generic)
 {
   if (icon == NULL)
-    return g_themed_icon_new (generic);
+    {
+      return g_themed_icon_new (generic);
+    }
 
   if (G_IS_FILE_ICON (icon))
     {
       GFile *file = g_file_icon_get_file (G_FILE_ICON (icon));
 
       if (file == NULL || !g_file_query_exists (file, NULL))
-        return g_themed_icon_new (generic);
+        {
+          return g_themed_icon_new (generic);
+        }
     }
 
   return g_object_ref (icon);
 }
 
 static MockaMenuApp *
-mocka_menu_app_new (const gchar *id, GDesktopAppInfo *info)
+mocka_menu_app_new (const gchar *entry_id, GDesktopAppInfo *info)
 {
   MockaMenuApp *self = g_object_new (MOCKA_TYPE_MENU_APP, NULL);
   GAppInfo *base = G_APP_INFO (info);
   GIcon *icon;
 
-  self->id = g_strdup (id);
+  self->id = g_strdup (entry_id);
   self->app_info = g_object_ref (info);
   self->name = g_strdup (g_app_info_get_display_name (base));
   self->comment = g_strdup (g_app_info_get_description (base));
@@ -115,9 +119,7 @@ mocka_menu_app_new (const gchar *id, GDesktopAppInfo *info)
 
   /* Collation keys sort the way the user's language expects, unlike the
    * bytes of the name. */
-  self->collate_key = self->name != NULL
-    ? g_utf8_collate_key_for_filename (self->name, -1)
-    : g_strdup ("");
+  self->collate_key = self->name != NULL ? g_utf8_collate_key_for_filename (self->name, -1) : g_strdup ("");
 
   return self;
 }
@@ -161,11 +163,11 @@ struct _MockaMenuCategory
 {
   GObject parent_instance;
 
-  gchar     *id;
-  gchar     *name;
-  GIcon     *icon;
-  GPtrArray *apps;        /* MockaMenuApp* */
-  GHashTable *app_ids;    /* the ids already in apps */
+  gchar *id;
+  gchar *name;
+  GIcon *icon;
+  GPtrArray *apps;     /* MockaMenuApp* */
+  GHashTable *app_ids; /* the ids already in apps */
 };
 
 G_DEFINE_TYPE (MockaMenuCategory, mocka_menu_category, G_TYPE_OBJECT)
@@ -229,10 +231,10 @@ struct _MockaMenuData
 {
   GObject parent_instance;
 
-  gchar      **menus;        /* menu file basenames to load */
-  GPtrArray   *categories;   /* MockaMenuCategory*, menu order */
-  GPtrArray   *all_apps;     /* MockaMenuApp*, every app once */
-  GHashTable  *all_app_ids;  /* id -> MockaMenuApp*, so an app is made once */
+  gchar **menus;           /* menu file basenames to load */
+  GPtrArray *categories;   /* MockaMenuCategory*, menu order */
+  GPtrArray *all_apps;     /* MockaMenuApp*, every app once */
+  GHashTable *all_app_ids; /* id -> MockaMenuApp*, so an app is made once */
 };
 
 G_DEFINE_TYPE (MockaMenuData, mocka_menu_data, G_TYPE_OBJECT)
@@ -271,22 +273,24 @@ mocka_menu_data_new (void)
 }
 
 MockaMenuData *
-mocka_menu_data_new_for_menus (const gchar * const *basenames)
+mocka_menu_data_new_for_menus (const gchar *const *basenames)
 {
   MockaMenuData *self = g_object_new (MOCKA_TYPE_MENU_DATA, NULL);
 
-  self->menus = g_strdupv ((gchar **) basenames);
+  self->menus = g_strdupv ((gchar **)basenames);
   return self;
 }
 
+// NOLINTBEGIN(bugprone-easily-swappable-parameters) GCompareFunc fixes this signature
 static gint
-compare_by_name (gconstpointer a, gconstpointer b)
+compare_by_name (gconstpointer left, gconstpointer right)
 {
-  MockaMenuApp *first = *(MockaMenuApp **) a;
-  MockaMenuApp *second = *(MockaMenuApp **) b;
+  MockaMenuApp *first = *(MockaMenuApp **)left;
+  MockaMenuApp *second = *(MockaMenuApp **)right;
 
   return g_strcmp0 (first->collate_key, second->collate_key);
 }
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 /*
  * The app for this id, made once and shared, so the same app in several
@@ -296,28 +300,30 @@ static MockaMenuApp *
 intern_app (MockaMenuData *self, MateMenuTreeEntry *entry)
 {
   GDesktopAppInfo *info = matemenu_tree_entry_get_app_info (entry);
-  const gchar *id = matemenu_tree_entry_get_desktop_file_id (entry);
+  const gchar *entry_id = matemenu_tree_entry_get_desktop_file_id (entry);
   MockaMenuApp *app;
 
-  if (info == NULL || id == NULL)
-    return NULL;
+  if (info == NULL || entry_id == NULL)
+    {
+      return NULL;
+    }
 
-  app = g_hash_table_lookup (self->all_app_ids, id);
+  app = g_hash_table_lookup (self->all_app_ids, entry_id);
   if (app != NULL)
-    return app;
+    {
+      return app;
+    }
 
-  app = mocka_menu_app_new (id, info);
+  app = mocka_menu_app_new (entry_id, info);
   g_ptr_array_add (self->all_apps, app);
-  g_hash_table_insert (self->all_app_ids, (gpointer) mocka_menu_app_get_id (app), app);
+  g_hash_table_insert (self->all_app_ids, (gpointer)mocka_menu_app_get_id (app), app);
 
   return app;
 }
 
 /* Every entry under a directory, however deep, lands in its top category. */
 static void
-collect_entries (MockaMenuData         *self,
-                 MockaMenuCategory     *category,
-                 MateMenuTreeDirectory *directory)
+collect_entries (MockaMenuData *self, MockaMenuCategory *category, MateMenuTreeDirectory *directory)
 {
   MateMenuTreeIter *iter = matemenu_tree_directory_iter (directory);
   MateMenuTreeItemType type;
@@ -329,12 +335,9 @@ collect_entries (MockaMenuData         *self,
           MateMenuTreeEntry *entry = matemenu_tree_iter_get_entry (iter);
           MockaMenuApp *app = intern_app (self, entry);
 
-          if (app != NULL
-              && !g_hash_table_contains (category->app_ids,
-                                         mocka_menu_app_get_id (app)))
+          if (app != NULL && !g_hash_table_contains (category->app_ids, mocka_menu_app_get_id (app)))
             {
-              g_hash_table_add (category->app_ids,
-                                (gpointer) mocka_menu_app_get_id (app));
+              g_hash_table_add (category->app_ids, (gpointer)mocka_menu_app_get_id (app));
               g_ptr_array_add (category->apps, g_object_ref (app));
             }
 
@@ -376,8 +379,7 @@ load_one_menu (MockaMenuData *self, const gchar *basename, GError **error)
   tree = matemenu_tree_new (basename, MATEMENU_TREE_FLAGS_NONE);
   if (tree == NULL)
     {
-      g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
-                   "could not open the menu %s", basename);
+      g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_FAILED, "could not open the menu %s", basename);
       return FALSE;
     }
 
@@ -446,7 +448,9 @@ mocka_menu_data_load (MockaMenuData *self, GError **error)
   for (gsize i = 0; self->menus != NULL && self->menus[i] != NULL; i++)
     {
       if (!load_one_menu (self, self->menus[i], error))
-        return FALSE;
+        {
+          return FALSE;
+        }
     }
 
   g_ptr_array_sort (self->all_apps, compare_by_name);

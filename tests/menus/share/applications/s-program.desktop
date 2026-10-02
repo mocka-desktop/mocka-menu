@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Qqqc Three
+Comment=Matches only through the program it runs
+Exec=basename
+Categories=Office;

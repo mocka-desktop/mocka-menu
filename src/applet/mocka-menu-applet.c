@@ -19,18 +19,17 @@
 #include "mocka-menu.h"
 
 #define MOCKA_MENU_FACTORY_ID "MockaMenuAppletFactory"
-#define MOCKA_MENU_APPLET_ID  "MockaMenuApplet"
+#define MOCKA_MENU_APPLET_ID "MockaMenuApplet"
 
 /* Room left around the icon so the button border fits on a thin panel. */
 #define BUTTON_PADDING 4
-#define MIN_ICON_SIZE  16
+#define MIN_ICON_SIZE 16
 
 /* Between the icon and the label, when the label is shown. */
 #define LABEL_SPACING 6
 
 #define MOCKA_TYPE_MENU_APPLET (mocka_menu_applet_get_type ())
-G_DECLARE_FINAL_TYPE (MockaMenuApplet, mocka_menu_applet, MOCKA, MENU_APPLET,
-                      MatePanelApplet)
+G_DECLARE_FINAL_TYPE (MockaMenuApplet, mocka_menu_applet, MOCKA, MENU_APPLET, MatePanelApplet)
 
 struct _MockaMenuApplet
 {
@@ -42,7 +41,7 @@ struct _MockaMenuApplet
   GtkWidget *menu_window;
   GtkWidget *view;
   MockaMenuData *data;
-  GSettings *settings;  /* shared by every applet, not owned (SPEC section 15) */
+  GSettings *settings; /* shared by every applet, not owned (SPEC section 15) */
 };
 
 G_DEFINE_TYPE (MockaMenuApplet, mocka_menu_applet, PANEL_TYPE_APPLET)
@@ -65,14 +64,17 @@ resolve_icon_name (const gchar *wanted)
 {
   GtkIconTheme *theme = gtk_icon_theme_get_default ();
 
-  if (wanted != NULL && *wanted != '\0'
-      && gtk_icon_theme_has_icon (theme, wanted))
-    return g_strdup (wanted);
+  if (wanted != NULL && *wanted != '\0' && gtk_icon_theme_has_icon (theme, wanted))
+    {
+      return g_strdup (wanted);
+    }
 
   for (gsize i = 0; i < G_N_ELEMENTS (icon_fallbacks); i++)
     {
       if (gtk_icon_theme_has_icon (theme, icon_fallbacks[i]))
-        return g_strdup (icon_fallbacks[i]);
+        {
+          return g_strdup (icon_fallbacks[i]);
+        }
     }
 
   return g_strdup ("image-missing");
@@ -83,22 +85,19 @@ update_icon (MockaMenuApplet *self)
 {
   gchar *wanted = g_settings_get_string (self->settings, "icon-name");
   gchar *icon_name = resolve_icon_name (wanted);
-  gint size = mate_panel_applet_get_size (MATE_PANEL_APPLET (self));
+  /* Signed on purpose: the padding is subtracted before the floor applies. */
+  gint size = (gint)mate_panel_applet_get_size (MATE_PANEL_APPLET (self));
 
   /* M1 gives the icon its own sizing rules, with HiDPI. */
-  gtk_image_set_from_icon_name (GTK_IMAGE (self->image), icon_name,
-                                GTK_ICON_SIZE_MENU);
-  gtk_image_set_pixel_size (GTK_IMAGE (self->image),
-                            MAX (MIN_ICON_SIZE, size - BUTTON_PADDING));
+  gtk_image_set_from_icon_name (GTK_IMAGE (self->image), icon_name, GTK_ICON_SIZE_MENU);
+  gtk_image_set_pixel_size (GTK_IMAGE (self->image), MAX (MIN_ICON_SIZE, size - BUTTON_PADDING));
 
   g_free (icon_name);
   g_free (wanted);
 }
 
 static void
-on_change_size (MockaMenuApplet *self,
-                gint             size,
-                gpointer         user_data)
+on_change_size (MockaMenuApplet *self, gint size, gpointer user_data)
 {
   update_icon (self);
 }
@@ -125,33 +124,27 @@ panel_side_for_orient (MatePanelAppletOrient orient)
 static gboolean
 orient_is_vertical (MatePanelAppletOrient orient)
 {
-  return orient == MATE_PANEL_APPLET_ORIENT_LEFT
-      || orient == MATE_PANEL_APPLET_ORIENT_RIGHT;
+  return orient == MATE_PANEL_APPLET_ORIENT_LEFT || orient == MATE_PANEL_APPLET_ORIENT_RIGHT;
 }
 
 static void
 update_label (MockaMenuApplet *self)
 {
-  MatePanelAppletOrient orient =
-    mate_panel_applet_get_orient (MATE_PANEL_APPLET (self));
+  MatePanelAppletOrient orient = mate_panel_applet_get_orient (MATE_PANEL_APPLET (self));
   gboolean wanted = g_settings_get_boolean (self->settings, "label-visible");
   gchar *text = g_settings_get_string (self->settings, "label-text");
 
   /* Empty means the translated default (SPEC section 15). */
-  gtk_label_set_text (GTK_LABEL (self->label),
-                      (text != NULL && *text != '\0') ? text : _("Menu"));
+  gtk_label_set_text (GTK_LABEL (self->label), (text != NULL && *text != '\0') ? text : _ ("Menu"));
   gtk_widget_set_visible (self->label, wanted && !orient_is_vertical (orient));
 
   g_free (text);
 }
 
 static void
-on_change_orient (MockaMenuApplet       *self,
-                  MatePanelAppletOrient  orient,
-                  gpointer               user_data)
+on_change_orient (MockaMenuApplet *self, MatePanelAppletOrient orient, gpointer user_data)
 {
-  mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window),
-                                    panel_side_for_orient (orient));
+  mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window), panel_side_for_orient (orient));
   update_label (self);
 }
 
@@ -178,10 +171,34 @@ static void
 update_rollover (MockaMenuApplet *self)
 {
   if (self->view == NULL)
-    return;
+    {
+      return;
+    }
 
   mocka_classic_view_set_rollover (MOCKA_CLASSIC_VIEW (self->view),
-      g_settings_get_boolean (self->settings, "rollover"));
+                                   g_settings_get_boolean (self->settings, "rollover"));
+}
+
+/*
+ * The search entry sits above or below the menu. In the Classic layout
+ * `panel` behaves as `top` until the panel entry arrives in M5
+ * (SPEC section 9.3).
+ */
+static void
+update_search_position (MockaMenuApplet *self)
+{
+  gchar *value;
+
+  if (self->view == NULL)
+    {
+      return;
+    }
+
+  value = g_settings_get_string (self->settings, "search-position");
+  mocka_classic_view_set_search_position (MOCKA_CLASSIC_VIEW (self->view), g_strcmp0 (value, "bottom") == 0
+                                                                               ? MOCKA_CLASSIC_SEARCH_BOTTOM
+                                                                               : MOCKA_CLASSIC_SEARCH_TOP);
+  g_free (value);
 }
 
 /* Every opening starts from the same state (SPEC section 4). */
@@ -189,12 +206,29 @@ static void
 on_menu_reset (MockaMenuApplet *self)
 {
   if (self->view != NULL)
-    mocka_classic_view_reset (MOCKA_CLASSIC_VIEW (self->view));
+    {
+      mocka_classic_view_reset (MOCKA_CLASSIC_VIEW (self->view));
+    }
+}
+
+/*
+ * Escape clears the search first, and only closes the menu once it is empty
+ * (SPEC section 12.2). The window asks before acting on Escape itself.
+ */
+static gboolean
+on_menu_escape (MockaMenuApplet *self)
+{
+  if (self->view == NULL || !mocka_classic_view_is_searching (MOCKA_CLASSIC_VIEW (self->view)))
+    {
+      return FALSE;
+    }
+
+  mocka_classic_view_clear_search (MOCKA_CLASSIC_VIEW (self->view));
+  return TRUE;
 }
 
 static void
-on_app_activated (MockaMenuApplet *self,
-                  MockaMenuApp    *app)
+on_app_activated (MockaMenuApplet *self, MockaMenuApp *app)
 {
   /* The menu closes as soon as something is launched (SPEC section 4). */
   mocka_menu_window_close (MOCKA_MENU_WINDOW (self->menu_window));
@@ -217,17 +251,18 @@ build_menu_contents (MockaMenuApplet *self)
     }
 
   self->view = mocka_classic_view_new (self->data);
-  g_signal_connect_swapped (self->view, "app-activated",
-                            G_CALLBACK (on_app_activated), self);
+  g_signal_connect_swapped (self->view, "app-activated", G_CALLBACK (on_app_activated), self);
 
-  content = mocka_menu_window_get_content_area (
-      MOCKA_MENU_WINDOW (self->menu_window));
+  content = mocka_menu_window_get_content_area (MOCKA_MENU_WINDOW (self->menu_window));
   gtk_box_pack_start (GTK_BOX (content), self->view, TRUE, TRUE, 0);
   gtk_widget_show_all (self->view);
 
   update_rollover (self);
-  g_signal_connect_swapped (self->settings, "changed::rollover",
-                            G_CALLBACK (update_rollover), self);
+  g_signal_connect_swapped (self->settings, "changed::rollover", G_CALLBACK (update_rollover), self);
+
+  update_search_position (self);
+  g_signal_connect_swapped (self->settings, "changed::search-position", G_CALLBACK (update_search_position), self);
+  g_signal_connect_swapped (self->menu_window, "escape", G_CALLBACK (on_menu_escape), self);
 }
 
 static void
@@ -271,36 +306,28 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
   gtk_container_add (GTK_CONTAINER (self->button), box);
   gtk_container_add (GTK_CONTAINER (self), self->button);
 
-  gtk_widget_set_tooltip_text (self->button, _("Menu"));
+  gtk_widget_set_tooltip_text (self->button, _ ("Menu"));
 
   /* Left click toggles the menu (SPEC section 3). */
   self->menu_window = mocka_menu_window_new ();
   mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window),
-      panel_side_for_orient (mate_panel_applet_get_orient (applet)));
-  g_signal_connect_swapped (self->button, "clicked",
-                            G_CALLBACK (on_button_clicked), self);
+                                    panel_side_for_orient (mate_panel_applet_get_orient (applet)));
+  g_signal_connect_swapped (self->button, "clicked", G_CALLBACK (on_button_clicked), self);
   g_signal_connect (self, "change-orient", G_CALLBACK (on_change_orient), NULL);
-  g_signal_connect_swapped (self->menu_window, "reset",
-                            G_CALLBACK (on_menu_reset), self);
-  g_signal_connect_swapped (self->menu_window, "opened",
-                            G_CALLBACK (on_menu_opened), self);
-  g_signal_connect_swapped (self->menu_window, "closed",
-                            G_CALLBACK (on_menu_closed), self);
-  g_signal_connect_swapped (self->settings, "changed::label-visible",
-                            G_CALLBACK (update_label), self);
-  g_signal_connect_swapped (self->settings, "changed::label-text",
-                            G_CALLBACK (update_label), self);
+  g_signal_connect_swapped (self->menu_window, "reset", G_CALLBACK (on_menu_reset), self);
+  g_signal_connect_swapped (self->menu_window, "opened", G_CALLBACK (on_menu_opened), self);
+  g_signal_connect_swapped (self->menu_window, "closed", G_CALLBACK (on_menu_closed), self);
+  g_signal_connect_swapped (self->settings, "changed::label-visible", G_CALLBACK (update_label), self);
+  g_signal_connect_swapped (self->settings, "changed::label-text", G_CALLBACK (update_label), self);
   build_menu_contents (self);
 
   mate_panel_applet_set_flags (applet, MATE_PANEL_APPLET_EXPAND_MINOR);
 
-  g_signal_connect_object (self->settings, "changed::icon-name",
-                           G_CALLBACK (update_icon), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->settings, "changed::icon-name", G_CALLBACK (update_icon), self, G_CONNECT_SWAPPED);
   g_signal_connect (self, "change-size", G_CALLBACK (on_change_size), NULL);
 
   /* Icons follow the theme, including a theme change (SPEC section 16). */
-  g_signal_connect_object (gtk_icon_theme_get_default (), "changed",
-                           G_CALLBACK (update_icon), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (gtk_icon_theme_get_default (), "changed", G_CALLBACK (update_icon), self, G_CONNECT_SWAPPED);
 
   update_icon (self);
   gtk_widget_show_all (GTK_WIDGET (self));
@@ -309,12 +336,12 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
 }
 
 static gboolean
-mocka_menu_applet_factory (MatePanelApplet *applet,
-                           const gchar     *iid,
-                           gpointer         user_data)
+mocka_menu_applet_factory (MatePanelApplet *applet, const gchar *iid, gpointer user_data)
 {
   if (strcmp (iid, MOCKA_MENU_APPLET_ID) != 0)
-    return FALSE;
+    {
+      return FALSE;
+    }
 
   mocka_menu_init ();
   mocka_menu_applet_setup (MOCKA_MENU_APPLET (applet));
@@ -327,8 +354,5 @@ mocka_menu_applet_factory (MatePanelApplet *applet,
  * (SPEC sections 8 and 13). Confirmed in M0 on a real panel, where a drag
  * started inside the applet reached the desktop, a panel, and Mocka Dock.
  */
-MATE_PANEL_APPLET_IN_PROCESS_FACTORY (MOCKA_MENU_FACTORY_ID,
-                                      MOCKA_TYPE_MENU_APPLET,
-                                      "Mocka Menu",
-                                      mocka_menu_applet_factory,
-                                      NULL)
+MATE_PANEL_APPLET_IN_PROCESS_FACTORY (MOCKA_MENU_FACTORY_ID, MOCKA_TYPE_MENU_APPLET, "Mocka Menu",
+                                      mocka_menu_applet_factory, NULL)

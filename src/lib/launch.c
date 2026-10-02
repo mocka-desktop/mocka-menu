@@ -24,28 +24,32 @@ start_in_directory (gpointer user_data)
   const gchar *directory = user_data;
 
   if (directory != NULL)
-    (void) chdir (directory);
+    {
+      (void)chdir (directory);
+    }
 }
 
 /* Carries the startup notification the dock and the window manager watch. */
 static GdkAppLaunchContext *
 launch_context_for (GDesktopAppInfo *info, GtkWidget *context_widget)
 {
-  GdkDisplay *display = context_widget != NULL
-    ? gtk_widget_get_display (context_widget)
-    : gdk_display_get_default ();
+  GdkDisplay *display = context_widget != NULL ? gtk_widget_get_display (context_widget) : gdk_display_get_default ();
   GdkAppLaunchContext *context;
   GIcon *icon;
 
   if (display == NULL)
-    return NULL;
+    {
+      return NULL;
+    }
 
   context = gdk_display_get_app_launch_context (display);
   gdk_app_launch_context_set_timestamp (context, gtk_get_current_event_time ());
 
   icon = g_app_info_get_icon (G_APP_INFO (info));
   if (icon != NULL)
-    gdk_app_launch_context_set_icon (context, icon);
+    {
+      gdk_app_launch_context_set_icon (context, icon);
+    }
 
   return context;
 }
@@ -56,10 +60,10 @@ launch_context_for (GDesktopAppInfo *info, GtkWidget *context_widget)
  */
 typedef struct
 {
-  GAppLaunchContext *context;     /* NULL once we have stopped watching */
-  gchar             *startup_id;
-  GPid               pid;
-  guint              timer_id;
+  GAppLaunchContext *context; /* NULL once we have stopped watching */
+  gchar *startup_id;
+  GPid pid;
+  guint timer_id;
 } Sequence;
 
 /* Long enough that a slow application is up, short enough to let go. */
@@ -71,7 +75,9 @@ sequence_free (gpointer data)
   Sequence *sequence = data;
 
   if (sequence->timer_id != 0)
-    g_source_remove (sequence->timer_id);
+    {
+      g_source_remove (sequence->timer_id);
+    }
 
   g_clear_object (&sequence->context);
   g_free (sequence->startup_id);
@@ -85,16 +91,20 @@ sequence_free (gpointer data)
  * running application is asked to open something: the new process hands the
  * request over and exits without ever mapping a window.
  */
+// NOLINTBEGIN(bugprone-easily-swappable-parameters) GChildWatchFunc fixes this signature
 static void
 on_child_exited (GPid pid, gint status, gpointer data)
 {
   Sequence *sequence = data;
 
   if (sequence->context != NULL)
-    g_app_launch_context_launch_failed (sequence->context, sequence->startup_id);
+    {
+      g_app_launch_context_launch_failed (sequence->context, sequence->startup_id);
+    }
 
   g_spawn_close_pid (pid);
 }
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
 /* Still running after all this time, so it is up: stop watching it. */
 static gboolean
@@ -114,52 +124,49 @@ on_sequence_settled (gpointer data)
  * has been spawned.
  */
 static void
-on_launched (GAppLaunchContext *context,
-             GAppInfo          *info,
-             GVariant          *platform_data,
-             gpointer           user_data)
+on_launched (GAppLaunchContext *context, GAppInfo *info, GVariant *platform_data, gpointer user_data)
 {
   Sequence *sequence;
   const gchar *startup_id = NULL;
   gint32 pid = 0;
 
   if (!g_variant_lookup (platform_data, "startup-notification-id", "&s", &startup_id))
-    return;
+    {
+      return;
+    }
   if (!g_variant_lookup (platform_data, "pid", "i", &pid))
-    return;
+    {
+      return;
+    }
 
   sequence = g_new0 (Sequence, 1);
   sequence->context = g_object_ref (context);
   sequence->startup_id = g_strdup (startup_id);
-  sequence->pid = (GPid) pid;
-  sequence->timer_id = g_timeout_add_seconds (SEQUENCE_WATCH_SECONDS,
-                                              on_sequence_settled, sequence);
+  sequence->pid = (GPid)pid;
+  sequence->timer_id = g_timeout_add_seconds (SEQUENCE_WATCH_SECONDS, on_sequence_settled, sequence);
 
   /* The watch also reaps the child, so it is kept until it fires. */
-  g_child_watch_add_full (G_PRIORITY_DEFAULT, sequence->pid,
-                          on_child_exited, sequence, sequence_free);
+  g_child_watch_add_full (G_PRIORITY_DEFAULT, sequence->pid, on_child_exited, sequence, sequence_free);
 }
 
 /* Says so plainly and goes away on its own, so nothing is left waiting. */
 static void
-report_failure (GDesktopAppInfo *info,
-                GtkWidget       *context_widget,
-                const GError    *error)
+report_failure (GDesktopAppInfo *info, GtkWidget *context_widget, const GError *error)
 {
   GtkWidget *dialog;
   const gchar *name = g_app_info_get_display_name (G_APP_INFO (info));
 
-  g_warning ("mocka-menu: could not start %s: %s", name,
-             error != NULL ? error->message : "unknown error");
+  g_warning ("mocka-menu: could not start %s: %s", name, error != NULL ? error->message : "unknown error");
 
-  dialog = gtk_message_dialog_new (NULL, 0, GTK_MESSAGE_ERROR,
-                                   GTK_BUTTONS_CLOSE,
-                                   _("Could not start %s"), name);
+  // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) GtkDialogFlags has no value for "none"
+  dialog = gtk_message_dialog_new (NULL, (GtkDialogFlags)0, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,
+                                   _ ("Could not start %s"), name);
   if (error != NULL)
-    gtk_message_dialog_format_secondary_text (GTK_MESSAGE_DIALOG (dialog),
-                                              "%s", error->message);
+    {
+      gtk_message_dialog_format_secondary_text (GTK_MESSAGE_DIALOG (dialog), "%s", error->message);
+    }
 
-  gtk_window_set_title (GTK_WINDOW (dialog), _("Mocka Menu"));
+  gtk_window_set_title (GTK_WINDOW (dialog), _ ("Mocka Menu"));
   g_signal_connect (dialog, "response", G_CALLBACK (gtk_widget_destroy), NULL);
   gtk_widget_show_all (dialog);
 }
@@ -182,19 +189,20 @@ mocka_launch_app (GDesktopAppInfo *info, GtkWidget *context_widget)
   path = g_desktop_app_info_get_string (info, G_KEY_FILE_DESKTOP_KEY_PATH);
 
   if (context != NULL)
-    g_signal_connect (context, "launched", G_CALLBACK (on_launched), NULL);
+    {
+      g_signal_connect (context, "launched", G_CALLBACK (on_launched), NULL);
+    }
 
   /*
    * launch_uris_as_manager, rather than the plain launch, because it is the
    * one that lets the child be set up before it runs. DO_NOT_REAP_CHILD so
    * the process can be watched; the child watch reaps it.
    */
-  if (!g_desktop_app_info_launch_uris_as_manager (info, NULL,
-                                                  G_APP_LAUNCH_CONTEXT (context),
-                                                  G_SPAWN_SEARCH_PATH
-                                                  | G_SPAWN_DO_NOT_REAP_CHILD,
-                                                  path != NULL ? NULL : start_in_directory,
-                                                  (gpointer) g_get_home_dir (),
+  // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) two GSpawnFlags combined is not one named value
+  const GSpawnFlags flags = G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD;
+
+  if (!g_desktop_app_info_launch_uris_as_manager (info, NULL, G_APP_LAUNCH_CONTEXT (context), flags,
+                                                  path != NULL ? NULL : start_in_directory, (gpointer)g_get_home_dir (),
                                                   NULL, NULL, &error))
     {
       report_failure (info, context_widget, error);
@@ -206,9 +214,7 @@ mocka_launch_app (GDesktopAppInfo *info, GtkWidget *context_widget)
 }
 
 void
-mocka_launch_action (GDesktopAppInfo *info,
-                     const gchar     *action,
-                     GtkWidget       *context_widget)
+mocka_launch_action (GDesktopAppInfo *info, const gchar *action, GtkWidget *context_widget)
 {
   GdkAppLaunchContext *context;
 
@@ -218,8 +224,7 @@ mocka_launch_action (GDesktopAppInfo *info,
   context = launch_context_for (info, context_widget);
 
   /* The action call reports no error of its own, so there is none to show. */
-  g_desktop_app_info_launch_action (info, action,
-                                    G_APP_LAUNCH_CONTEXT (context));
+  g_desktop_app_info_launch_action (info, action, G_APP_LAUNCH_CONTEXT (context));
 
   g_clear_object (&context);
 }

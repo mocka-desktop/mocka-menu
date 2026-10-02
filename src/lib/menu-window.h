@@ -18,22 +18,18 @@ G_BEGIN_DECLS
  */
 
 #define MOCKA_TYPE_MENU_WINDOW (mocka_menu_window_get_type ())
-G_DECLARE_FINAL_TYPE (MockaMenuWindow, mocka_menu_window, MOCKA, MENU_WINDOW,
-                      GtkWindow)
+G_DECLARE_FINAL_TYPE (MockaMenuWindow, mocka_menu_window, MOCKA, MENU_WINDOW, GtkWindow)
 
-GtkWidget *mocka_menu_window_new              (void);
+GtkWidget *mocka_menu_window_new (void);
 
 /* Which screen edge the panel sits on, so the menu opens away from it. */
-void       mocka_menu_window_set_panel_side   (MockaMenuWindow *self,
-                                               GtkPositionType  side);
+void mocka_menu_window_set_panel_side (MockaMenuWindow *self, GtkPositionType side);
 
 /* Anchor is the panel button the menu belongs to. */
-void       mocka_menu_window_open             (MockaMenuWindow *self,
-                                               GtkWidget       *anchor);
-void       mocka_menu_window_close            (MockaMenuWindow *self);
-void       mocka_menu_window_toggle           (MockaMenuWindow *self,
-                                               GtkWidget       *anchor);
-gboolean   mocka_menu_window_is_open          (MockaMenuWindow *self);
+void mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor);
+void mocka_menu_window_close (MockaMenuWindow *self);
+void mocka_menu_window_toggle (MockaMenuWindow *self, GtkWidget *anchor);
+gboolean mocka_menu_window_is_open (MockaMenuWindow *self);
 
 /* Where the layout packs itself. */
 GtkWidget *mocka_menu_window_get_content_area (MockaMenuWindow *self);

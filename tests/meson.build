@@ -27,6 +27,12 @@ test('menu-data-french', test_menu_data,
   env: test_env_fr,
 )
 
+test_search = executable('test-search',
+  'test-search.c',
+  dependencies: [mocka_menu_dep, mate_menu_dep],
+)
+test('search', test_search, env: test_env)
+
 # Geometry only, so it needs no panel, no display and no menu tree.
 test_classic_placement = executable('test-classic-placement',
   'test-classic-placement.c',
