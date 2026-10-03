@@ -13,6 +13,7 @@
 #include <mate-panel-applet.h>
 
 #include "classic-view.h"
+#include "hotkey.h"
 #include "launch.h"
 #include "menu-data.h"
 #include "menu-window.h"
@@ -39,6 +40,7 @@ struct _MockaMenuApplet
   GtkWidget *menu_window;
   GtkWidget *view;
   MockaMenuData *data;
+  MockaHotkey *hotkey;
   GSettings *settings; /* shared by every applet, not owned (SPEC section 15) */
 };
 
@@ -191,6 +193,28 @@ on_button_clicked (MockaMenuApplet *self)
   mocka_menu_window_toggle (MOCKA_MENU_WINDOW (self->menu_window), self->button);
 }
 
+/* Super alone opens the menu, as the setting names it (SPEC section 12.1). */
+static void
+update_hotkey (MockaMenuApplet *self)
+{
+  gchar *key;
+
+  if (self->hotkey == NULL)
+    {
+      return;
+    }
+
+  key = g_settings_get_string (self->settings, "hot-key");
+  mocka_hotkey_set_key (self->hotkey, key);
+  g_free (key);
+}
+
+static void
+on_hotkey_activated (MockaMenuApplet *self)
+{
+  mocka_menu_window_toggle (MOCKA_MENU_WINDOW (self->menu_window), self->button);
+}
+
 static void
 update_rollover (MockaMenuApplet *self)
 {
@@ -286,6 +310,15 @@ build_menu_contents (MockaMenuApplet *self)
 
   update_search_position (self);
   g_signal_connect_swapped (self->settings, "changed::search-position", G_CALLBACK (update_search_position), self);
+
+  /* Every applet watches the key for now; one owner comes next. */
+  self->hotkey = mocka_hotkey_new ();
+  if (self->hotkey != NULL)
+    {
+      g_signal_connect_swapped (self->hotkey, "activated", G_CALLBACK (on_hotkey_activated), self);
+      update_hotkey (self);
+      g_signal_connect_swapped (self->settings, "changed::hot-key", G_CALLBACK (update_hotkey), self);
+    }
   g_signal_connect_swapped (self->menu_window, "escape", G_CALLBACK (on_menu_escape), self);
 }
 
@@ -296,6 +329,7 @@ mocka_menu_applet_dispose (GObject *object)
 
   g_clear_pointer (&self->menu_window, gtk_widget_destroy);
   g_clear_object (&self->data);
+  g_clear_object (&self->hotkey);
 
   G_OBJECT_CLASS (mocka_menu_applet_parent_class)->dispose (object);
 }
