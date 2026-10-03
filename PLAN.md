@@ -93,7 +93,7 @@ grabs and marco's bindings keep working.
 
 - [x] Normalization and ranking, with unit tests for every rank in SPEC section 9.2, accents, and favourites first
 - [x] Search entry at `top` and `bottom`, typing anywhere goes to search, "No results"
-- [ ] Keyboard navigation in the menu window (SPEC section 12.2)
+- [x] Keyboard navigation in the menu window (SPEC section 12.2)
 - [ ] Super alone through XInput 2 raw events, `hot-key` setting
 - [ ] Hotkey ownership across applets: the owner holds an X manager selection, other applets watch it and take over when the owner goes away
 - [ ] Manual test by maintainer

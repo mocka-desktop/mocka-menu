@@ -115,6 +115,9 @@ struct _MockaClassicView
   GtkWidget *app_list;
   GtkWidget *app_scroller;
 
+  guint app_count;     /* rows in app_list, for keyboard navigation */
+  gulong toplevel_key; /* handler on the window, so the keys come first */
+  gint saved_category; /* the category to put back when a search is cleared */
   gboolean rollover;
 };
 
@@ -303,13 +306,32 @@ static void
 on_search_changed (GtkSearchEntry *entry, MockaClassicView *self)
 {
   const gchar *text = gtk_entry_get_text (GTK_ENTRY (entry));
+  gboolean searching = text != NULL && *text != '\0';
+  GtkListBoxRow *row;
   GPtrArray *results;
 
   /* The categories are greyed while searching, since the selection counts for
-   * nothing until the search is cleared (SPEC section 6). */
-  gtk_widget_set_sensitive (self->category_scroller, text == NULL || *text == '\0');
+   * nothing until the search is cleared (SPEC section 6). The selection goes
+   * with them, and is put back when the search is cleared. */
+  gtk_widget_set_sensitive (self->category_scroller, !searching);
 
-  if (text == NULL || *text == '\0')
+  if (searching && self->saved_category < 0)
+    {
+      row = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->category_list));
+      self->saved_category = row != NULL ? gtk_list_box_row_get_index (row) : 0;
+      gtk_list_box_unselect_all (GTK_LIST_BOX (self->category_list));
+    }
+  else if (!searching && self->saved_category >= 0)
+    {
+      row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->category_list), self->saved_category);
+      if (row != NULL)
+        {
+          gtk_list_box_select_row (GTK_LIST_BOX (self->category_list), row);
+        }
+      self->saved_category = -1;
+    }
+
+  if (!searching)
     {
       show_apps (self, apps_of_selected_category (self));
       return;
@@ -326,12 +348,230 @@ on_search_changed (GtkSearchEntry *entry, MockaClassicView *self)
  * Key events reach the focused widget first and then travel up to here, so
  * this only sees what the lists did not use, such as ordinary text.
  */
+/* Keeps a row on screen without taking the focus off wherever it is. */
+static void
+scroll_app_row_into_view (MockaClassicView *self, GtkListBoxRow *row)
+{
+  GtkAdjustment *adjustment = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->app_scroller));
+  GtkAllocation alloc;
+  gdouble value = gtk_adjustment_get_value (adjustment);
+  gdouble page = gtk_adjustment_get_page_size (adjustment);
+
+  gtk_widget_get_allocation (GTK_WIDGET (row), &alloc);
+
+  if (alloc.y < value)
+    {
+      gtk_adjustment_set_value (adjustment, alloc.y);
+    }
+  else if (alloc.y + alloc.height > value + page)
+    {
+      gtk_adjustment_set_value (adjustment, alloc.y + alloc.height - page);
+    }
+}
+
+/* How many rows fit, so Page Up and Page Down move by a screenful. */
+static gint
+app_rows_per_page (MockaClassicView *self)
+{
+  GtkAdjustment *adjustment = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->app_scroller));
+  GtkListBoxRow *first = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->app_list), 0);
+  GtkAllocation alloc;
+
+  if (first == NULL)
+    {
+      return 1;
+    }
+
+  gtk_widget_get_allocation (GTK_WIDGET (first), &alloc);
+  if (alloc.height <= 0)
+    {
+      return 1;
+    }
+
+  return MAX (1, (gint)(gtk_adjustment_get_page_size (adjustment) / alloc.height));
+}
+
+static void
+select_app_at (MockaClassicView *self, gint index)
+{
+  GtkListBoxRow *row;
+
+  if (self->app_count == 0)
+    {
+      return;
+    }
+
+  index = CLAMP (index, 0, (gint)self->app_count - 1);
+  row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->app_list), index);
+  if (row == NULL)
+    {
+      return;
+    }
+
+  gtk_list_box_select_row (GTK_LIST_BOX (self->app_list), row);
+  scroll_app_row_into_view (self, row);
+}
+
+static void
+activate_selected_app (MockaClassicView *self)
+{
+  GtkListBoxRow *row = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->app_list));
+  MockaMenuApp *app;
+
+  /* Enter launches the first result when nothing was picked (SPEC section 9.1). */
+  if (row == NULL)
+    {
+      row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->app_list), 0);
+    }
+  if (row == NULL)
+    {
+      return;
+    }
+
+  app = g_object_get_data (G_OBJECT (row), "app");
+  if (app != NULL)
+    {
+      g_signal_emit (self, view_signals[SIGNAL_APP_ACTIVATED], 0, app);
+    }
+}
+
+/* Left and Right move between the two lists (SPEC section 12.2). */
+static gboolean
+focus_list (MockaClassicView *self, guint keyval)
+{
+  GtkWidget *list;
+  GtkListBoxRow *row;
+
+  if (keyval == GDK_KEY_Left || keyval == GDK_KEY_KP_Left)
+    {
+      list = self->category_list;
+    }
+  else if (keyval == GDK_KEY_Right || keyval == GDK_KEY_KP_Right)
+    {
+      list = self->app_list;
+    }
+  else
+    {
+      return FALSE;
+    }
+
+  /* The categories are insensitive while a search is showing. */
+  if (!gtk_widget_is_sensitive (list))
+    {
+      return FALSE;
+    }
+
+  /* The rows take the focus, not the box around them. */
+  row = gtk_list_box_get_selected_row (GTK_LIST_BOX (list));
+  if (row == NULL)
+    {
+      row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (list), 0);
+    }
+  if (row == NULL)
+    {
+      return FALSE;
+    }
+
+  gtk_list_box_select_row (GTK_LIST_BOX (list), row);
+  gtk_widget_grab_focus (GTK_WIDGET (row));
+
+  return TRUE;
+}
+
+/* The app list, driven from the search entry (SPEC section 12.2). */
+static gboolean
+navigate_app_list (MockaClassicView *self, guint keyval)
+{
+  GtkListBoxRow *selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->app_list));
+  gint current = selected != NULL ? gtk_list_box_row_get_index (selected) : -1;
+
+  switch (keyval)
+    {
+    case GDK_KEY_Down:
+    case GDK_KEY_KP_Down:
+      select_app_at (self, current + 1);
+      return TRUE;
+    case GDK_KEY_Up:
+    case GDK_KEY_KP_Up:
+      select_app_at (self, current <= 0 ? 0 : current - 1);
+      return TRUE;
+    case GDK_KEY_Page_Down:
+    case GDK_KEY_KP_Page_Down:
+      select_app_at (self, current + app_rows_per_page (self));
+      return TRUE;
+    case GDK_KEY_Page_Up:
+    case GDK_KEY_KP_Page_Up:
+      select_app_at (self, current - app_rows_per_page (self));
+      return TRUE;
+    case GDK_KEY_Home:
+    case GDK_KEY_KP_Home:
+      select_app_at (self, 0);
+      return TRUE;
+    case GDK_KEY_End:
+    case GDK_KEY_KP_End:
+      select_app_at (self, (gint)self->app_count - 1);
+      return TRUE;
+    case GDK_KEY_Left:
+    case GDK_KEY_KP_Left:
+    case GDK_KEY_Right:
+    case GDK_KEY_KP_Right:
+      return focus_list (self, keyval);
+    case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter:
+      activate_selected_app (self);
+      return TRUE;
+    default:
+      return FALSE;
+    }
+}
+
+/*
+ * On the window, because the entry binds Home, End and the Page keys for its
+ * own cursor and would swallow them first. Only while the entry has focus:
+ * the lists do their own navigation.
+ */
+static gboolean
+on_toplevel_key_press (GtkWidget *toplevel, GdkEventKey *event, MockaClassicView *self)
+{
+  if (!gtk_widget_has_focus (self->entry))
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
+
+  return navigate_app_list (self, event->keyval) ? GDK_EVENT_STOP : GDK_EVENT_PROPAGATE;
+}
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters) the signal fixes this signature
+static void
+on_hierarchy_changed (GtkWidget *widget, GtkWidget *previous_toplevel, MockaClassicView *self)
+{
+  GtkWidget *toplevel = gtk_widget_get_toplevel (widget);
+
+  if (self->toplevel_key != 0 && previous_toplevel != NULL)
+    {
+      g_signal_handler_disconnect (previous_toplevel, self->toplevel_key);
+      self->toplevel_key = 0;
+    }
+
+  if (gtk_widget_is_toplevel (toplevel))
+    {
+      self->toplevel_key = g_signal_connect (toplevel, "key-press-event", G_CALLBACK (on_toplevel_key_press), self);
+    }
+}
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
 static gboolean
 on_key_press (GtkWidget *widget, GdkEventKey *event, MockaClassicView *self)
 {
   if (gtk_widget_has_focus (self->entry))
     {
       return GDK_EVENT_PROPAGATE;
+    }
+
+  /* With focus in a list, Left and Right still swap between them. */
+  if (focus_list (self, event->keyval))
+    {
+      return GDK_EVENT_STOP;
     }
 
   if (!gtk_search_entry_handle_event (GTK_SEARCH_ENTRY (self->entry), (GdkEvent *)event))
@@ -383,6 +623,7 @@ show_apps (MockaClassicView *self, GPtrArray *apps)
       gtk_container_add (GTK_CONTAINER (self->app_list), row);
     }
 
+  self->app_count = apps != NULL ? apps->len : 0;
   gtk_widget_show_all (self->app_list);
 
   /* A new category starts at the top of its list. */
@@ -475,16 +716,17 @@ mocka_classic_view_reset (MockaClassicView *self)
 
   g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
 
-  /* Search empty and focused, "All" selected, scrolled to the top
-   * (SPEC section 4). */
+  /* Search empty with no cursor in it, "All" selected and holding the focus,
+   * scrolled to the top (SPEC section 4). */
   gtk_entry_set_text (GTK_ENTRY (self->entry), "");
   gtk_widget_set_sensitive (self->category_scroller, TRUE);
-  gtk_widget_grab_focus (self->entry);
+  self->saved_category = -1;
 
   first = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->category_list), 0);
   if (first != NULL)
     {
       gtk_list_box_select_row (GTK_LIST_BOX (self->category_list), first);
+      gtk_widget_grab_focus (GTK_WIDGET (first));
     }
 
   show_apps (self, mocka_menu_data_get_all_apps (self->data));
@@ -503,7 +745,11 @@ mocka_classic_view_init (MockaClassicView *self)
   self->columns = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 
   self->category_list = gtk_list_box_new ();
-  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->category_list), GTK_SELECTION_BROWSE);
+  self->saved_category = -1;
+
+  /* Single rather than browse, so the selection can be dropped while a search
+   * is showing. Browse always keeps one. */
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->category_list), GTK_SELECTION_SINGLE);
 
   self->category_scroller = gtk_scrolled_window_new (NULL, NULL);
   /* A scrollbar only when it does not fit (SPEC section 6). */
@@ -554,6 +800,7 @@ mocka_classic_view_init (MockaClassicView *self)
 
   g_signal_connect (self->entry, "search-changed", G_CALLBACK (on_search_changed), self);
   g_signal_connect (self, "key-press-event", G_CALLBACK (on_key_press), self);
+  g_signal_connect (self, "hierarchy-changed", G_CALLBACK (on_hierarchy_changed), self);
 
   gtk_widget_add_events (self->category_list, GDK_POINTER_MOTION_MASK);
   g_signal_connect (self->category_list, "motion-notify-event", G_CALLBACK (on_category_motion), self);
@@ -601,7 +848,7 @@ mocka_classic_view_clear_search (MockaClassicView *self)
   g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
 
   gtk_entry_set_text (GTK_ENTRY (self->entry), "");
-  gtk_widget_grab_focus (self->entry);
+  focus_list (self, GDK_KEY_Left);
 }
 
 GtkWidget *

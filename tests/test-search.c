@@ -44,10 +44,10 @@ find_app (MockaMenuData *data, const gchar *id)
 
 /* The rank of one app against one search, normalizing the text first. */
 static MockaSearchRank
-rank_of (MockaMenuData *data, const gchar *id, const gchar *text)
+rank_of (MockaMenuApp *app, const gchar *text)
 {
   gchar *normalized = mocka_search_normalize (text);
-  MockaSearchRank rank = mocka_search_rank (find_app (data, id), normalized);
+  MockaSearchRank rank = mocka_search_rank (app, normalized);
 
   g_free (normalized);
   return rank;
@@ -78,24 +78,24 @@ test_every_rank (void)
   MockaMenuData *data = load_test_menu ();
 
   /* 1, 2, 3: the name, from its start, from a word, and from inside. */
-  g_assert_cmpint (rank_of (data, "s-name.desktop", "zenith"), ==, MOCKA_SEARCH_RANK_NAME_PREFIX);
-  g_assert_cmpint (rank_of (data, "s-name.desktop", "prose"), ==, MOCKA_SEARCH_RANK_NAME_WORD);
-  g_assert_cmpint (rank_of (data, "s-name.desktop", "nit"), ==, MOCKA_SEARCH_RANK_NAME_CONTAINS);
+  g_assert_cmpint (rank_of (find_app (data, "s-name.desktop"), "zenith"), ==, MOCKA_SEARCH_RANK_NAME_PREFIX);
+  g_assert_cmpint (rank_of (find_app (data, "s-name.desktop"), "prose"), ==, MOCKA_SEARCH_RANK_NAME_WORD);
+  g_assert_cmpint (rank_of (find_app (data, "s-name.desktop"), "nit"), ==, MOCKA_SEARCH_RANK_NAME_CONTAINS);
 
   /* 4: the generic name. */
-  g_assert_cmpint (rank_of (data, "s-generic.desktop", "ledger"), ==, MOCKA_SEARCH_RANK_GENERIC_NAME);
+  g_assert_cmpint (rank_of (find_app (data, "s-generic.desktop"), "ledger"), ==, MOCKA_SEARCH_RANK_GENERIC_NAME);
 
   /* 5: the keywords. */
-  g_assert_cmpint (rank_of (data, "s-keywords.desktop", "cinema"), ==, MOCKA_SEARCH_RANK_KEYWORDS);
+  g_assert_cmpint (rank_of (find_app (data, "s-keywords.desktop"), "cinema"), ==, MOCKA_SEARCH_RANK_KEYWORDS);
 
   /* 6: the program it runs. */
-  g_assert_cmpint (rank_of (data, "s-program.desktop", "basename"), ==, MOCKA_SEARCH_RANK_PROGRAM);
+  g_assert_cmpint (rank_of (find_app (data, "s-program.desktop"), "basename"), ==, MOCKA_SEARCH_RANK_PROGRAM);
 
   /* 7: the comment. */
-  g_assert_cmpint (rank_of (data, "s-comment.desktop", "compressed"), ==, MOCKA_SEARCH_RANK_COMMENT);
+  g_assert_cmpint (rank_of (find_app (data, "s-comment.desktop"), "compressed"), ==, MOCKA_SEARCH_RANK_COMMENT);
 
   /* Nothing matches nothing. */
-  g_assert_cmpint (rank_of (data, "s-comment.desktop", "zzzznotthere"), ==, MOCKA_SEARCH_RANK_NONE);
+  g_assert_cmpint (rank_of (find_app (data, "s-comment.desktop"), "zzzznotthere"), ==, MOCKA_SEARCH_RANK_NONE);
 
   g_object_unref (data);
 }
@@ -106,9 +106,9 @@ test_accents (void)
 {
   MockaMenuData *data = load_test_menu ();
 
-  g_assert_cmpint (rank_of (data, "editeur.desktop", "editeur"), ==, MOCKA_SEARCH_RANK_NAME_PREFIX);
-  g_assert_cmpint (rank_of (data, "editeur.desktop", "Éditeur"), ==, MOCKA_SEARCH_RANK_NAME_PREFIX);
-  g_assert_cmpint (rank_of (data, "editeur.desktop", "EDITEUR"), ==, MOCKA_SEARCH_RANK_NAME_PREFIX);
+  g_assert_cmpint (rank_of (find_app (data, "editeur.desktop"), "editeur"), ==, MOCKA_SEARCH_RANK_NAME_PREFIX);
+  g_assert_cmpint (rank_of (find_app (data, "editeur.desktop"), "Éditeur"), ==, MOCKA_SEARCH_RANK_NAME_PREFIX);
+  g_assert_cmpint (rank_of (find_app (data, "editeur.desktop"), "EDITEUR"), ==, MOCKA_SEARCH_RANK_NAME_PREFIX);
 
   g_object_unref (data);
 }
@@ -200,7 +200,7 @@ test_search_does_not_reach_hidden_entries (void)
 int
 main (int argc, char **argv)
 {
-  setlocale (LC_ALL, "");
+  (void)setlocale (LC_ALL, "");
   g_test_init (&argc, &argv, NULL);
 
   g_test_add_func ("/search/normalize", test_normalize);

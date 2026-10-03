@@ -36,10 +36,13 @@ if [ -z "$tidy" ]; then
 	exit 1
 fi
 
+# clang-tidy exits 0 whatever it finds, so anything it prints is a finding.
 status=0
 for source in src/lib/*.c src/applet/*.c tests/*.c; do
 	[ -f "$source" ] || continue
-	if ! "$tidy" -p "$builddir" --quiet "$source" 2>/dev/null; then
+	found=$("$tidy" -p "$builddir" --quiet "$source" 2>/dev/null) || true
+	if [ -n "$found" ]; then
+		printf '%s\n' "$found"
 		status=1
 	fi
 done

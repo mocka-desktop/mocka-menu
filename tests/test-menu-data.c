@@ -265,7 +265,7 @@ int
 main (int argc, char **argv)
 {
   /* Take the language from the environment: meson sets it per test run. */
-  setlocale (LC_ALL, "");
+  (void)setlocale (LC_ALL, "");
   g_test_init (&argc, &argv, NULL);
 
   g_test_add_func ("/menu-data/categories", test_categories);
