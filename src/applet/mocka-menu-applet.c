@@ -21,8 +21,6 @@
 #define MOCKA_MENU_FACTORY_ID "MockaMenuAppletFactory"
 #define MOCKA_MENU_APPLET_ID "MockaMenuApplet"
 
-/* Room left around the icon so the button border fits on a thin panel. */
-#define BUTTON_PADDING 4
 #define MIN_ICON_SIZE 16
 
 /* Between the icon and the label, when the label is shown. */
@@ -80,17 +78,48 @@ resolve_icon_name (const gchar *wanted)
   return g_strdup ("image-missing");
 }
 
+/* A vertical panel has no room for a label (SPEC section 3). */
+static gboolean
+orient_is_vertical (MatePanelAppletOrient orient)
+{
+  return orient == MATE_PANEL_APPLET_ORIENT_LEFT || orient == MATE_PANEL_APPLET_ORIENT_RIGHT;
+}
+
+/*
+ * The room the theme gives the button's padding and border across the panel,
+ * so the icon fits inside the button whatever the theme sets.
+ */
+static gint
+button_frame_size (MockaMenuApplet *self)
+{
+  GtkStyleContext *context = gtk_widget_get_style_context (self->button);
+  GtkStateFlags state = gtk_style_context_get_state (context);
+  MatePanelAppletOrient orient = mate_panel_applet_get_orient (MATE_PANEL_APPLET (self));
+  GtkBorder padding;
+  GtkBorder border;
+
+  gtk_style_context_get_padding (context, state, &padding);
+  gtk_style_context_get_border (context, state, &border);
+
+  if (orient_is_vertical (orient))
+    {
+      return padding.left + padding.right + border.left + border.right;
+    }
+
+  return padding.top + padding.bottom + border.top + border.bottom;
+}
+
 static void
 update_icon (MockaMenuApplet *self)
 {
   gchar *wanted = g_settings_get_string (self->settings, "icon-name");
   gchar *icon_name = resolve_icon_name (wanted);
-  /* Signed on purpose: the padding is subtracted before the floor applies. */
+  /* Signed on purpose: the frame is subtracted before the floor applies. */
   gint size = (gint)mate_panel_applet_get_size (MATE_PANEL_APPLET (self));
 
   /* M1 gives the icon its own sizing rules, with HiDPI. */
   gtk_image_set_from_icon_name (GTK_IMAGE (self->image), icon_name, GTK_ICON_SIZE_MENU);
-  gtk_image_set_pixel_size (GTK_IMAGE (self->image), MAX (MIN_ICON_SIZE, size - BUTTON_PADDING));
+  gtk_image_set_pixel_size (GTK_IMAGE (self->image), MAX (MIN_ICON_SIZE, size - button_frame_size (self)));
 
   g_free (icon_name);
   g_free (wanted);
@@ -120,13 +149,6 @@ panel_side_for_orient (MatePanelAppletOrient orient)
     }
 }
 
-/* A vertical panel has no room for a label (SPEC section 3). */
-static gboolean
-orient_is_vertical (MatePanelAppletOrient orient)
-{
-  return orient == MATE_PANEL_APPLET_ORIENT_LEFT || orient == MATE_PANEL_APPLET_ORIENT_RIGHT;
-}
-
 static void
 update_label (MockaMenuApplet *self)
 {
@@ -146,6 +168,8 @@ on_change_orient (MockaMenuApplet *self, MatePanelAppletOrient orient, gpointer 
 {
   mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window), panel_side_for_orient (orient));
   update_label (self);
+  /* The frame is measured across the panel, which turns with it. */
+  update_icon (self);
 }
 
 /* The button shows as pressed while the menu is open (SPEC section 3). */
@@ -328,6 +352,8 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
 
   /* Icons follow the theme, including a theme change (SPEC section 16). */
   g_signal_connect_object (gtk_icon_theme_get_default (), "changed", G_CALLBACK (update_icon), self, G_CONNECT_SWAPPED);
+  /* A new GTK theme can change the button's padding and border. */
+  g_signal_connect_swapped (self->button, "style-updated", G_CALLBACK (update_icon), self);
 
   update_icon (self);
   gtk_widget_show_all (GTK_WIDGET (self));
