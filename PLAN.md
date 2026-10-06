@@ -95,7 +95,7 @@ grabs and marco's bindings keep working.
 - [x] Search entry at `top` and `bottom`, typing anywhere goes to search, "No results"
 - [x] Keyboard navigation in the menu window (SPEC section 12.2)
 - [x] Super alone through XInput 2 raw events, `hot-key` setting
-- [ ] Hotkey ownership across applets: the owner holds an X manager selection, other applets watch it and take over when the owner goes away
+- [x] Hotkey ownership across applets: the owner holds an X manager selection, other applets watch it and take over when the owner goes away
 - [ ] Manual test by maintainer
 
 ## M3: Favourites, session controls, app menu

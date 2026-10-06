@@ -34,9 +34,16 @@ struct _MockaHotkey
   gint xi_opcode;
   KeySym target; /* NoSymbol when the key is off */
 
+  Atom selection; /* the one applet that acts on the key owns this */
+  Window selection_window;
+  Window watched; /* the owner we are waiting on, or None */
+  gboolean owner;
+
   gboolean armed; /* the key is down */
   gboolean clean; /* nothing else pressed since it went down */
 };
+
+static void claim_selection (MockaHotkey *self);
 
 G_DEFINE_TYPE (MockaHotkey, mocka_hotkey, G_TYPE_OBJECT)
 
@@ -103,6 +110,66 @@ handle_raw_key (MockaHotkey *self, XIRawEvent *raw, gboolean pressed)
   self->clean = FALSE;
 }
 
+/*
+ * One applet acts on the key, even when several are on the panel. The one
+ * that owns this selection is that applet; the rest wait for it to go
+ * (SPEC section 12.1).
+ */
+static void
+watch_owner (MockaHotkey *self)
+{
+  Display *display = GDK_DISPLAY_XDISPLAY (self->display);
+  Window owner;
+
+  self->watched = None;
+
+  owner = XGetSelectionOwner (display, self->selection);
+  if (owner == None || owner == self->selection_window)
+    {
+      return;
+    }
+
+  /* The owner's window going away is how its turn ends. */
+  gdk_x11_display_error_trap_push (self->display);
+  XSelectInput (display, owner, StructureNotifyMask);
+  XSync (display, False);
+  if (gdk_x11_display_error_trap_pop (self->display) == 0)
+    {
+      self->watched = owner;
+    }
+}
+
+static void
+claim_selection (MockaHotkey *self)
+{
+  Display *display = GDK_DISPLAY_XDISPLAY (self->display);
+
+  /* The first to claim it keeps it, so an owner is never pushed aside
+   * (SPEC section 12.1). */
+  if (XGetSelectionOwner (display, self->selection) != None)
+    {
+      self->owner = FALSE;
+      watch_owner (self);
+      return;
+    }
+
+  gdk_x11_display_error_trap_push (self->display);
+  XSetSelectionOwner (display, self->selection, self->selection_window, CurrentTime);
+  XSync (display, False);
+  gdk_x11_display_error_trap_pop_ignored (self->display);
+
+  self->owner = XGetSelectionOwner (display, self->selection) == self->selection_window;
+
+  if (self->owner)
+    {
+      self->watched = None;
+    }
+  else
+    {
+      watch_owner (self);
+    }
+}
+
 static GdkFilterReturn
 on_x_event (GdkXEvent *xevent, GdkEvent *event, gpointer data)
 {
@@ -112,7 +179,23 @@ on_x_event (GdkXEvent *xevent, GdkEvent *event, gpointer data)
   Display *display = GDK_DISPLAY_XDISPLAY (self->display);
   gboolean fetched_here;
 
-  if (self->target == NoSymbol || cookie->type != GenericEvent || cookie->extension != self->xi_opcode)
+  /* Another applet took the key. */
+  if (x_event->type == SelectionClear && x_event->xselectionclear.selection == self->selection)
+    {
+      self->owner = FALSE;
+      self->armed = FALSE;
+      watch_owner (self);
+      return GDK_FILTER_CONTINUE;
+    }
+
+  /* The applet that held it is gone, so the key is free again. */
+  if (x_event->type == DestroyNotify && self->watched != None && x_event->xdestroywindow.window == self->watched)
+    {
+      claim_selection (self);
+      return GDK_FILTER_CONTINUE;
+    }
+
+  if (!self->owner || self->target == NoSymbol || cookie->type != GenericEvent || cookie->extension != self->xi_opcode)
     {
       return GDK_FILTER_CONTINUE;
     }
@@ -158,6 +241,18 @@ mocka_hotkey_finalize (GObject *object)
   MockaHotkey *self = MOCKA_HOTKEY (object);
 
   gdk_window_remove_filter (NULL, on_x_event, self);
+
+  /* Destroying it hands the key to whichever applet is waiting. */
+  if (self->selection_window != None)
+    {
+      Display *display = GDK_DISPLAY_XDISPLAY (self->display);
+
+      gdk_x11_display_error_trap_push (self->display);
+      XDestroyWindow (display, self->selection_window);
+      XSync (display, False);
+      gdk_x11_display_error_trap_pop_ignored (self->display);
+      self->selection_window = None;
+    }
 
   G_OBJECT_CLASS (mocka_hotkey_parent_class)->finalize (object);
 }
@@ -221,6 +316,7 @@ mocka_hotkey_new (void)
   gint first_event;
   gint first_error;
   gint error;
+  gchar *selection_name;
 
   if (gdk_display == NULL || !GDK_IS_X11_DISPLAY (gdk_display))
     {
@@ -258,7 +354,19 @@ mocka_hotkey_new (void)
       return NULL;
     }
 
+  /*
+   * Unmapped and input only: it exists to own the selection and to be
+   * destroyed, which is what tells the others their turn has come.
+   */
+  selection_name = g_strdup_printf ("_MOCKA_MENU_HOTKEY_S%d", DefaultScreen (display));
+  self->selection = XInternAtom (display, selection_name, False);
+  g_free (selection_name);
+
+  self->selection_window = XCreateWindow (display, GDK_WINDOW_XID (gdk_get_default_root_window ()), -100, -100, 1, 1, 0,
+                                          CopyFromParent, InputOnly, CopyFromParent, 0, NULL);
+
   gdk_window_add_filter (NULL, on_x_event, self);
+  claim_selection (self);
 
   return self;
 }
