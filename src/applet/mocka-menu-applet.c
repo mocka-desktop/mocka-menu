@@ -13,6 +13,7 @@
 #include <mate-panel-applet.h>
 
 #include "classic-view.h"
+#include "favourites.h"
 #include "hotkey.h"
 #include "launch.h"
 #include "menu-data.h"
@@ -40,6 +41,7 @@ struct _MockaMenuApplet
   GtkWidget *menu_window;
   GtkWidget *view;
   MockaMenuData *data;
+  MockaFavourites *favourites;
   MockaHotkey *hotkey;
   GSettings *settings; /* shared by every applet, not owned (SPEC section 15) */
 };
@@ -298,7 +300,8 @@ build_menu_contents (MockaMenuApplet *self)
       return;
     }
 
-  self->view = mocka_classic_view_new (self->data);
+  self->favourites = mocka_favourites_new (self->data, self->settings);
+  self->view = mocka_classic_view_new (self->data, self->favourites);
   g_signal_connect_swapped (self->view, "app-activated", G_CALLBACK (on_app_activated), self);
 
   content = mocka_menu_window_get_content_area (MOCKA_MENU_WINDOW (self->menu_window));
@@ -328,6 +331,7 @@ mocka_menu_applet_dispose (GObject *object)
   MockaMenuApplet *self = MOCKA_MENU_APPLET (object);
 
   g_clear_pointer (&self->menu_window, gtk_widget_destroy);
+  g_clear_object (&self->favourites);
   g_clear_object (&self->data);
   g_clear_object (&self->hotkey);
 

@@ -27,3 +27,8 @@ test('gschema',
   glib_compile_schemas,
   args: ['--strict', '--dry-run', meson.current_source_dir()],
 )
+
+# Compiled into the build tree as well, so the tests read the schema from the
+# source rather than whatever happens to be installed.
+gnome.compile_schemas(depend_files: files('org.mocka_desktop.Menu.gschema.xml'))
+schemas_build_dir = meson.current_build_dir()

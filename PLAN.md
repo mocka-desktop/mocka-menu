@@ -100,10 +100,10 @@ grabs and marco's bindings keep working.
 
 ## M3: Favourites, session controls, app menu
 
-- [ ] `favourite-apps` storage and live updates, uninstalled apps skipped and kept
-- [ ] Favourites column: launch, tooltips, scrolling, drag to add, drag to reorder
+- [x] `favourite-apps` storage and live updates, uninstalled apps skipped and kept
+- [x] Favourites column: launch, tooltips, scrolling, drag to add, drag to reorder
+- [x] App menu: desktop actions, Pin to Favourites, Pin to Dock (shown only with the dock schema installed), Add to Desktop and Remove from Desktop, with unit tests for the desktop copy and its recognition. Comes right after the column, since Unpin from Favourites is the only way to take a favourite out
 - [ ] Session controls: async calls, hidden when the service is missing
-- [ ] App menu: desktop actions, Pin to Favourites, Pin to Dock (shown only with the dock schema installed), Add to Desktop and Remove from Desktop, with unit tests for the desktop copy and its recognition
 - [ ] Drag apps out to the desktop, a panel, and Mocka Dock
 - [ ] Button menu: Edit Menus, About, panel items. Preferences stays hidden until M5; settings are changed with `gsettings` meanwhile
 - [ ] Default `favourite-apps` (SPEC section 20)
