@@ -14,6 +14,7 @@
 #include "classic-view.h"
 #include "menu-window.h"
 #include "search.h"
+#include "session.h"
 
 /* Keeps a value inside a range even when the range itself is empty. */
 static gint
@@ -122,6 +123,10 @@ struct _MockaClassicView
   GtkWidget *app_scroller;
   GtkWidget *favourites_list;
   GtkWidget *favourites_scroller;
+  GtkWidget *favourites_column; /* the favourites above the session controls */
+  GtkWidget *session_box;
+  GtkWidget *session_buttons[MOCKA_SESSION_N_ACTIONS];
+  MockaSession *session; /* owned, built with the view */
 
   guint app_count;     /* rows in app_list, for keyboard navigation */
   gulong toplevel_key; /* handler on the window, so the keys come first */
@@ -763,8 +768,70 @@ show_favourites (MockaClassicView *self)
 
   gtk_widget_show_all (self->favourites_list);
 
-  /* No favourites, no column (SPEC section 8). */
+  /* The column itself stays, since the session controls live at its bottom
+   * (SPEC section 10). Only the empty list goes. */
   gtk_widget_set_visible (self->favourites_scroller, apps->len > 0);
+}
+
+static void
+on_session_button (GtkWidget *button, MockaClassicView *self)
+{
+  MockaSessionAction action = (MockaSessionAction)GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (button), "action"));
+  MockaMenuWindow *window = mocka_menu_window_of (button);
+
+  /* The window closes at once, without waiting for the call (SPEC section 10). */
+  if (window != NULL)
+    {
+      mocka_menu_window_close (window);
+    }
+
+  mocka_session_run (self->session, action);
+}
+
+/* A service that is not there hides its button (SPEC section 10). */
+static void
+show_session_buttons (MockaClassicView *self)
+{
+  gboolean any = FALSE;
+
+  for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
+    {
+      gboolean can = mocka_session_can (self->session, i);
+
+      gtk_widget_set_visible (self->session_buttons[i], can);
+      any = any || can;
+    }
+
+  gtk_widget_set_visible (self->session_box, any);
+}
+
+static void
+build_session_buttons (MockaClassicView *self)
+{
+  self->session_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+
+  for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
+    {
+      GtkWidget *button = gtk_button_new_from_icon_name (mocka_session_action_icon (i), GTK_ICON_SIZE_LARGE_TOOLBAR);
+
+      gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
+      gtk_widget_set_tooltip_text (button, mocka_session_action_name (i));
+      g_object_set_data (G_OBJECT (button), "action", GUINT_TO_POINTER (i));
+      g_signal_connect (button, "clicked", G_CALLBACK (on_session_button), self);
+
+      /* The applet shows the whole view at once, which would reveal a button
+       * whose service is missing. */
+      gtk_widget_set_no_show_all (button, TRUE);
+
+      self->session_buttons[i] = button;
+      gtk_box_pack_start (GTK_BOX (self->session_box), button, FALSE, FALSE, 0);
+    }
+
+  gtk_widget_set_no_show_all (self->session_box, TRUE);
+
+  self->session = mocka_session_new ();
+  g_signal_connect_swapped (self->session, "changed", G_CALLBACK (show_session_buttons), self);
+  show_session_buttons (self);
 }
 
 /*
@@ -1022,8 +1089,7 @@ mocka_classic_view_init (MockaClassicView *self)
   gtk_box_pack_start (GTK_BOX (self->left_column), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->left_column), self->settings_list, FALSE, FALSE, 0);
 
-  /* Leftmost in both layouts (SPEC section 8). The session controls join it
-   * at the bottom in the next step. */
+  /* Leftmost in both layouts (SPEC section 8). */
   self->favourites_list = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->favourites_list), GTK_SELECTION_NONE);
 
@@ -1031,6 +1097,7 @@ mocka_classic_view_init (MockaClassicView *self)
   gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self->favourites_scroller), GTK_POLICY_NEVER,
                                   GTK_POLICY_AUTOMATIC);
   gtk_scrolled_window_set_propagate_natural_width (GTK_SCROLLED_WINDOW (self->favourites_scroller), TRUE);
+  gtk_widget_set_no_show_all (self->favourites_scroller, TRUE);
   gtk_container_add (GTK_CONTAINER (self->favourites_scroller), self->favourites_list);
 
   gtk_drag_dest_set (self->favourites_list, GTK_DEST_DEFAULT_ALL, app_targets, G_N_ELEMENTS (app_targets),
@@ -1038,7 +1105,14 @@ mocka_classic_view_init (MockaClassicView *self)
   g_signal_connect (self->favourites_list, "drag-data-received", G_CALLBACK (on_favourites_drop), self);
   g_signal_connect (self->favourites_list, "row-activated", G_CALLBACK (on_favourite_activated), self);
 
-  gtk_box_pack_start (GTK_BOX (self->columns), self->favourites_scroller, FALSE, FALSE, 0);
+  build_session_buttons (self);
+
+  /* Favourites above, session controls at the bottom (SPEC sections 8 and 10). */
+  self->favourites_column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+  gtk_box_pack_start (GTK_BOX (self->favourites_column), self->favourites_scroller, TRUE, TRUE, 0);
+  gtk_box_pack_end (GTK_BOX (self->favourites_column), self->session_box, FALSE, FALSE, 0);
+
+  gtk_box_pack_start (GTK_BOX (self->columns), self->favourites_column, FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->columns), gtk_separator_new (GTK_ORIENTATION_VERTICAL), FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->columns), self->left_column, FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->columns), gtk_separator_new (GTK_ORIENTATION_VERTICAL), FALSE, FALSE, 0);
@@ -1062,8 +1136,20 @@ mocka_classic_view_init (MockaClassicView *self)
 }
 
 static void
+mocka_classic_view_dispose (GObject *object)
+{
+  MockaClassicView *self = MOCKA_CLASSIC_VIEW (object);
+
+  g_clear_object (&self->session);
+
+  G_OBJECT_CLASS (mocka_classic_view_parent_class)->dispose (object);
+}
+
+static void
 mocka_classic_view_class_init (MockaClassicViewClass *klass)
 {
+  G_OBJECT_CLASS (klass)->dispose = mocka_classic_view_dispose;
+
   view_signals[SIGNAL_APP_ACTIVATED] = g_signal_new ("app-activated", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
                                                      NULL, NULL, NULL, G_TYPE_NONE, 1, MOCKA_TYPE_MENU_APP);
 }

@@ -9,6 +9,7 @@ mocka_menu_headers = files(
   'favourites.h',
   'app-menu.h',
   'pins.h',
+  'session.h',
 )
 
 mocka_menu_lib = shared_library('mocka-menu',
@@ -22,6 +23,7 @@ mocka_menu_lib = shared_library('mocka-menu',
   'favourites.c',
   'app-menu.c',
   'pins.c',
+  'session.c',
   include_directories: config_inc,
   dependencies: [gio_dep, gtk_dep, mate_menu_dep, x11_dep, xi_dep],
   version: meson.project_version(),
