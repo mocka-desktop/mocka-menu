@@ -325,6 +325,9 @@ Rules:
   drag.
 - Remove from Desktop deletes only a file recognized that way. Anything else,
   including a launcher whose command the user has edited, is never touched.
+- Add to Desktop refuses when a file of that name is already there and is not
+  recognized as this app's launcher. It never replaces a file it did not
+  write.
 - The app menu offers Add to Desktop while no launcher for the app is
   recognized, and Remove from Desktop once one is.
 - Pin, Unpin, Add to Desktop and Remove from Desktop close the app menu and
