@@ -802,11 +802,26 @@ show_favourites (MockaClassicView *self)
       gtk_container_add (GTK_CONTAINER (self->favourites_list), make_favourite_row (g_ptr_array_index (apps, i), self));
     }
 
+  /*
+   * Shown even with nothing in it. The column stays for the session controls
+   * at its bottom (SPEC section 10), and an empty list is still the drop
+   * target, which is the only way to put the first favourite back.
+   */
   gtk_widget_show_all (self->favourites_list);
+  gtk_widget_show (self->favourites_scroller);
+}
 
-  /* The column itself stays, since the session controls live at its bottom
-   * (SPEC section 10). Only the empty list goes. */
-  gtk_widget_set_visible (self->favourites_scroller, apps->len > 0);
+static void
+on_favourites_changed (MockaClassicView *self)
+{
+  show_favourites (self);
+
+  /* Favourites come first within a rank, so a showing search is now stale
+   * (SPEC section 9.2). */
+  if (mocka_classic_view_is_searching (self))
+    {
+      on_search_changed (GTK_SEARCH_ENTRY (self->entry), self);
+    }
 }
 
 static void
@@ -1235,7 +1250,7 @@ mocka_classic_view_new (MockaMenuData *data, MockaFavourites *favourites)
 
   if (favourites != NULL)
     {
-      g_signal_connect_swapped (favourites, "changed", G_CALLBACK (show_favourites), self);
+      g_signal_connect_swapped (favourites, "changed", G_CALLBACK (on_favourites_changed), self);
     }
   show_favourites (self);
   mocka_classic_view_rebuild (self);

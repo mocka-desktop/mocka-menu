@@ -197,6 +197,50 @@ test_changed_by_someone_else (void)
   g_object_unref (data);
 }
 
+/* Anything may write the setting, duplicates included, and one Unpin has to
+ * take the app out for good. */
+static void
+test_remove_takes_every_copy (void)
+{
+  const gchar *const ids[] = { "alpha.desktop", "beta.desktop", "alpha.desktop", NULL };
+  MockaMenuData *data = load_test_menu ();
+  GSettings *settings = isolated_settings (ids);
+  MockaFavourites *favourites = mocka_favourites_new (data, settings);
+  gchar **stored;
+
+  mocka_favourites_remove (favourites, "alpha.desktop");
+
+  g_assert_false (mocka_favourites_contains (favourites, "alpha.desktop"));
+
+  stored = stored_ids (settings);
+  g_assert_cmpuint (g_strv_length (stored), ==, 1);
+  g_assert_cmpstr (stored[0], ==, "beta.desktop");
+
+  g_strfreev (stored);
+  g_object_unref (favourites);
+  g_object_unref (settings);
+  g_object_unref (data);
+}
+
+/* The settings outlive the favourites, and a change after that must not reach
+ * the freed object. */
+static void
+test_settings_outlive_the_favourites (void)
+{
+  const gchar *const ids[] = { "alpha.desktop", NULL };
+  const gchar *const other[] = { "beta.desktop", NULL };
+  MockaMenuData *data = load_test_menu ();
+  GSettings *settings = isolated_settings (ids);
+  MockaFavourites *favourites = mocka_favourites_new (data, settings);
+
+  g_object_unref (favourites);
+
+  g_settings_set_strv (settings, "favourite-apps", other);
+
+  g_object_unref (settings);
+  g_object_unref (data);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -208,6 +252,8 @@ main (int argc, char **argv)
   g_test_add_func ("/favourites/position-skips-missing", test_position_skips_missing);
   g_test_add_func ("/favourites/move", test_move);
   g_test_add_func ("/favourites/changed-elsewhere", test_changed_by_someone_else);
+  g_test_add_func ("/favourites/remove-takes-every-copy", test_remove_takes_every_copy);
+  g_test_add_func ("/favourites/settings-outlive-the-favourites", test_settings_outlive_the_favourites);
 
   return g_test_run ();
 }

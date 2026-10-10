@@ -60,9 +60,10 @@ find_app (MockaFavourites *self, const gchar *id)
 static void
 reload (MockaFavourites *self)
 {
-  g_strfreev (self->ids);
-  g_ptr_array_set_size (self->apps, 0);
+  /* The set borrows its keys from the array, so it is emptied first. */
   g_hash_table_remove_all (self->id_set);
+  g_ptr_array_set_size (self->apps, 0);
+  g_strfreev (self->ids);
 
   self->ids = g_settings_get_strv (self->settings, FAVOURITES_KEY);
 
@@ -181,8 +182,13 @@ mocka_favourites_new (MockaMenuData *data, GSettings *settings)
 
   reload (self);
 
-  /* Changes made by anything else show at once (SPEC section 8). */
-  g_signal_connect_swapped (settings, "changed::" FAVOURITES_KEY, G_CALLBACK (on_settings_changed), self);
+  /*
+   * Changes made by anything else show at once (SPEC section 8). The settings
+   * are shared and outlive this, so the handler has to go when this does,
+   * which connect_object does for us.
+   */
+  g_signal_connect_object (settings, "changed::" FAVOURITES_KEY, G_CALLBACK (on_settings_changed), self,
+                           G_CONNECT_SWAPPED);
 
   return self;
 }
@@ -236,13 +242,14 @@ mocka_favourites_remove (MockaFavourites *self, const gchar *id)
   g_return_if_fail (MOCKA_IS_FAVOURITES (self));
   g_return_if_fail (id != NULL);
 
+  /* Every copy of it: the stored list can hold the same ID twice, since
+   * anything may write the setting. */
   ids = stored_copy (self);
-  for (guint i = 0; i < ids->len; i++)
+  for (guint i = ids->len; i > 0; i--)
     {
-      if (g_strcmp0 (g_ptr_array_index (ids, i), id) == 0)
+      if (g_strcmp0 (g_ptr_array_index (ids, i - 1), id) == 0)
         {
-          g_ptr_array_remove_index (ids, i);
-          break;
+          g_ptr_array_remove_index (ids, i - 1);
         }
     }
 

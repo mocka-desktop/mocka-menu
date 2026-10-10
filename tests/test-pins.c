@@ -179,6 +179,32 @@ test_marker_for_another_app_is_not_ours (Fixture *fixture, gconstpointer data)
   g_free (path);
 }
 
+/* A file of that name we did not write is never replaced (SPEC section 11.1). */
+static void
+test_add_refuses_a_file_that_is_not_ours (Fixture *fixture, gconstpointer data)
+{
+  GError *error = NULL;
+  gchar *path = copy_path (fixture);
+  const gchar *theirs = "[Desktop Entry]\n"
+                        "Type=Application\n"
+                        "Name=Something Else\n"
+                        "Exec=cat --theirs\n";
+  gchar *after = NULL;
+
+  g_assert_true (g_file_set_contents (path, theirs, -1, &error));
+  g_assert_no_error (error);
+
+  g_assert_false (mocka_pins_desktop_add (fixture->info, &error));
+  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_EXISTS);
+
+  g_assert_true (g_file_get_contents (path, &after, NULL, NULL));
+  g_assert_cmpstr (after, ==, theirs);
+
+  g_free (after);
+  g_error_free (error);
+  g_free (path);
+}
+
 /* Add over a file of ours is a plain overwrite, not a second launcher. */
 static void
 test_add_twice_keeps_one_copy (Fixture *fixture, gconstpointer data)
@@ -214,6 +240,7 @@ main (int argc, char **argv)
   ADD ("/pins/desktop/unmarked-copy-is-recognized", test_unmarked_copy_is_recognized);
   ADD ("/pins/desktop/edited-launcher-is-left-alone", test_edited_launcher_is_left_alone);
   ADD ("/pins/desktop/marker-for-another-app-is-not-ours", test_marker_for_another_app_is_not_ours);
+  ADD ("/pins/desktop/add-refuses-a-file-that-is-not-ours", test_add_refuses_a_file_that_is_not_ours);
   ADD ("/pins/desktop/add-twice-keeps-one-copy", test_add_twice_keeps_one_copy);
 #undef ADD
 

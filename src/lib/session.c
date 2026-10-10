@@ -111,15 +111,15 @@ on_activatable_names (GObject *source, GAsyncResult *result, gpointer user_data)
 {
   GDBusConnection *connection = G_DBUS_CONNECTION (source);
   GVariant *reply = g_dbus_connection_call_finish (connection, result, NULL);
-  MockaSession *self;
+  MockaSession *self = user_data;
   gchar **names = NULL;
 
   if (reply == NULL)
     {
+      g_object_unref (self);
       return;
     }
 
-  self = user_data;
   g_variant_get (reply, "(^as)", &names);
 
   for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
@@ -134,14 +134,20 @@ on_activatable_names (GObject *source, GAsyncResult *result, gpointer user_data)
 
   g_strfreev (names);
   g_variant_unref (reply);
+  g_object_unref (self);
 }
 
+/*
+ * Each asynchronous call holds a reference. Cancelling in dispose does not
+ * help on its own: a call that already succeeded still delivers its result,
+ * and the callback would then be left with a freed session.
+ */
 static void
 ask_activatable_names (MockaSession *self, GDBusConnection *connection)
 {
   g_dbus_connection_call (connection, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
                           "ListActivatableNames", NULL, G_VARIANT_TYPE ("(as)"), G_DBUS_CALL_FLAGS_NONE, -1,
-                          self->cancellable, on_activatable_names, self);
+                          self->cancellable, on_activatable_names, g_object_ref (self));
 }
 
 static void
@@ -166,14 +172,14 @@ on_session_bus (GObject *source, GAsyncResult *result, gpointer user_data)
   GDBusConnection *connection = g_bus_get_finish (result, NULL);
   MockaSession *self = user_data;
 
-  if (connection == NULL)
+  if (connection != NULL)
     {
-      return;
+      self->session_bus = connection;
+      watch_names (self, FALSE);
+      ask_activatable_names (self, connection);
     }
 
-  self->session_bus = connection;
-  watch_names (self, FALSE);
-  ask_activatable_names (self, connection);
+  g_object_unref (self);
 }
 
 static void
@@ -182,14 +188,14 @@ on_system_bus (GObject *source, GAsyncResult *result, gpointer user_data)
   GDBusConnection *connection = g_bus_get_finish (result, NULL);
   MockaSession *self = user_data;
 
-  if (connection == NULL)
+  if (connection != NULL)
     {
-      return;
+      self->system_bus = connection;
+      watch_names (self, TRUE);
+      ask_activatable_names (self, connection);
     }
 
-  self->system_bus = connection;
-  watch_names (self, TRUE);
-  ask_activatable_names (self, connection);
+  g_object_unref (self);
 }
 
 static void
@@ -200,13 +206,13 @@ mocka_session_init (MockaSession *self)
   self->cancellable = g_cancellable_new ();
   self->seat_path = g_strdup (seat);
 
-  g_bus_get (G_BUS_TYPE_SESSION, self->cancellable, on_session_bus, self);
+  g_bus_get (G_BUS_TYPE_SESSION, self->cancellable, on_session_bus, g_object_ref (self));
 
   /* Only the display manager's seat lives on the system bus, and without a
    * seat path there is nothing to call there. */
   if (self->seat_path != NULL)
     {
-      g_bus_get (G_BUS_TYPE_SYSTEM, self->cancellable, on_system_bus, self);
+      g_bus_get (G_BUS_TYPE_SYSTEM, self->cancellable, on_system_bus, g_object_ref (self));
     }
 }
 
@@ -279,15 +285,29 @@ mocka_session_can (MockaSession *self, MockaSessionAction action)
   return self->owned[action] || self->activatable[action];
 }
 
+/*
+ * The window is already closed, so there is nowhere to show a failure. It is
+ * logged rather than dropped, which is what tells a maintainer that a session
+ * service refused or went away.
+ */
 static void
 on_call_done (GObject *source, GAsyncResult *result, gpointer user_data)
 {
-  GVariant *reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, NULL);
+  GError *error = NULL;
+  GVariant *reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
 
   if (reply != NULL)
     {
       g_variant_unref (reply);
+      return;
     }
+
+  if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    {
+      g_warning ("mocka-menu: %s failed: %s", (const gchar *)user_data, error->message);
+    }
+
+  g_error_free (error);
 }
 
 void
@@ -311,5 +331,5 @@ mocka_session_run (MockaSession *self, MockaSessionAction action)
 
   g_dbus_connection_call (bus_for (self, action), services[action].name, path_for (self, action),
                           services[action].interface, services[action].method, args, NULL, G_DBUS_CALL_FLAGS_NONE, -1,
-                          self->cancellable, on_call_done, NULL);
+                          self->cancellable, on_call_done, (gpointer)services[action].method);
 }

@@ -228,6 +228,14 @@ mocka_pins_desktop_add (GDesktopAppInfo *info, GError **error)
       return FALSE;
     }
 
+  /* Something else holds the name (SPEC section 11.1). */
+  if (g_file_test (path, G_FILE_TEST_EXISTS) && !mocka_pins_desktop_has_copy (info))
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_EXISTS, "%s is not ours to replace", path);
+      g_free (path);
+      return FALSE;
+    }
+
   file = g_key_file_new ();
   written = g_key_file_load_from_file (file, source, COPY_FLAGS, error);
   if (written)

@@ -18,7 +18,12 @@ gboolean mocka_pins_dock_contains (const gchar *id);
 void mocka_pins_dock_add (const gchar *id);
 void mocka_pins_dock_remove (const gchar *id);
 
-/* Only a copy carrying X-Mocka-Menu-Copy-Of counts as ours, or is removed. */
+/*
+ * A file named after the app's entry is the app's launcher when it carries
+ * X-Mocka-Menu-Copy-Of for this app, or, carrying no such key, when its Exec
+ * is the app's own. Only such a file is removed, and the add refuses to
+ * replace anything else.
+ */
 gboolean mocka_pins_desktop_has_copy (GDesktopAppInfo *info);
 gboolean mocka_pins_desktop_add (GDesktopAppInfo *info, GError **error);
 gboolean mocka_pins_desktop_remove (GDesktopAppInfo *info, GError **error);
