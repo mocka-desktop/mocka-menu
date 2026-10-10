@@ -181,12 +181,27 @@ mocka_pins_desktop_has_copy (GDesktopAppInfo *info)
     }
 
   file = g_key_file_new ();
-  if (g_key_file_load_from_file (file, path, G_KEY_FILE_NONE, NULL))
+  if (!g_key_file_load_from_file (file, path, G_KEY_FILE_NONE, NULL))
     {
-      marker = g_key_file_get_string (file, G_KEY_FILE_DESKTOP_GROUP, COPY_KEY, NULL);
+      g_key_file_free (file);
+      g_free (path);
+      return FALSE;
     }
 
-  ours = marker != NULL && g_strcmp0 (marker, g_app_info_get_id (G_APP_INFO (info))) == 0;
+  marker = g_key_file_get_string (file, G_KEY_FILE_DESKTOP_GROUP, COPY_KEY, NULL);
+  if (marker != NULL)
+    {
+      ours = g_strcmp0 (marker, g_app_info_get_id (G_APP_INFO (info))) == 0;
+    }
+  else
+    {
+      /* A drag to the desktop is the file manager copying the entry, with no
+       * key in it. Same file name and same command is the same launcher. */
+      gchar *exec = g_key_file_get_string (file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_EXEC, NULL);
+
+      ours = exec != NULL && g_strcmp0 (exec, g_app_info_get_commandline (G_APP_INFO (info))) == 0;
+      g_free (exec);
+    }
 
   g_free (marker);
   g_key_file_free (file);

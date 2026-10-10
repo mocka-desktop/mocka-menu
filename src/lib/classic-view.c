@@ -190,8 +190,24 @@ icon_to_draw (GIcon *icon, const gchar *generic)
 /* Within the menu an app travels as its desktop entry ID. */
 #define APP_TARGET "application/x-mocka-menu-app"
 
-static const GtkTargetEntry app_targets[] = {
-  { (gchar *)APP_TARGET, GTK_TARGET_SAME_APP, 0 },
+enum
+{
+  TARGET_APP,
+  TARGET_URI_LIST
+};
+
+/*
+ * Dragged out, an app is the URI of its desktop entry, which is what the
+ * desktop, a panel and Mocka Dock all make a launcher from (SPEC section 13).
+ */
+static const GtkTargetEntry drag_targets[] = {
+  { (gchar *)APP_TARGET, GTK_TARGET_SAME_APP, TARGET_APP },
+  { (gchar *)"text/uri-list", 0, TARGET_URI_LIST },
+};
+
+/* The column takes our own apps only, never files from elsewhere. */
+static const GtkTargetEntry drop_targets[] = {
+  { (gchar *)APP_TARGET, GTK_TARGET_SAME_APP, TARGET_APP },
 };
 
 // NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange) two actions combined is not one named value
@@ -204,14 +220,34 @@ on_drag_data_get (GtkWidget *row, GdkDragContext *context, GtkSelectionData *sel
                   gpointer user_data)
 {
   MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "app");
+  const gchar *file;
+  gchar *uris[2] = { NULL, NULL };
 
   if (app == NULL)
     {
       return;
     }
 
-  gtk_selection_data_set (selection, gdk_atom_intern_static_string (APP_TARGET), 8,
-                          (const guchar *)mocka_menu_app_get_id (app), (gint)strlen (mocka_menu_app_get_id (app)));
+  if (info == TARGET_APP)
+    {
+      gtk_selection_data_set (selection, gdk_atom_intern_static_string (APP_TARGET), 8,
+                              (const guchar *)mocka_menu_app_get_id (app), (gint)strlen (mocka_menu_app_get_id (app)));
+      return;
+    }
+
+  file = g_desktop_app_info_get_filename (mocka_menu_app_get_app_info (app));
+  if (file == NULL)
+    {
+      return;
+    }
+
+  uris[0] = g_filename_to_uri (file, NULL, NULL);
+  if (uris[0] != NULL)
+    {
+      gtk_selection_data_set_uris (selection, uris);
+    }
+
+  g_free (uris[0]);
 }
 // NOLINTEND(bugprone-easily-swappable-parameters)
 
@@ -291,7 +327,7 @@ draggable_holder (GtkWidget *row, MockaMenuApp *app, MockaClassicView *self)
   /* The row holds the reference; this one only borrows it. */
   g_object_set_data (G_OBJECT (events), "app", app);
 
-  gtk_drag_source_set (events, GDK_BUTTON1_MASK, app_targets, G_N_ELEMENTS (app_targets), APP_DRAG_ACTIONS);
+  gtk_drag_source_set (events, GDK_BUTTON1_MASK, drag_targets, G_N_ELEMENTS (drag_targets), APP_DRAG_ACTIONS);
   g_signal_connect (events, "drag-data-get", G_CALLBACK (on_drag_data_get), NULL);
   g_signal_connect (events, "drag-begin", G_CALLBACK (on_drag_begin), NULL);
   g_signal_connect (events, "drag-end", G_CALLBACK (on_drag_end), NULL);
@@ -1100,7 +1136,7 @@ mocka_classic_view_init (MockaClassicView *self)
   gtk_widget_set_no_show_all (self->favourites_scroller, TRUE);
   gtk_container_add (GTK_CONTAINER (self->favourites_scroller), self->favourites_list);
 
-  gtk_drag_dest_set (self->favourites_list, GTK_DEST_DEFAULT_ALL, app_targets, G_N_ELEMENTS (app_targets),
+  gtk_drag_dest_set (self->favourites_list, GTK_DEST_DEFAULT_ALL, drop_targets, G_N_ELEMENTS (drop_targets),
                      APP_DRAG_ACTIONS);
   g_signal_connect (self->favourites_list, "drag-data-received", G_CALLBACK (on_favourites_drop), self);
   g_signal_connect (self->favourites_list, "row-activated", G_CALLBACK (on_favourite_activated), self);

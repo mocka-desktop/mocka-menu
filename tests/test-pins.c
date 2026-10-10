@@ -85,7 +85,7 @@ test_add_copies_and_marks (Fixture *fixture, gconstpointer data)
 
   /* The rest of the entry comes along. */
   exec = g_key_file_get_string (file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_EXEC, NULL);
-  g_assert_cmpstr (exec, ==, "cat");
+  g_assert_cmpstr (exec, ==, "cat %F");
 
   g_assert_true (mocka_pins_desktop_has_copy (fixture->info));
 
@@ -112,18 +112,42 @@ test_remove_deletes_our_copy (Fixture *fixture, gconstpointer data)
   g_free (path);
 }
 
-/* A launcher we did not write is not ours, and is never deleted. */
+/* What a drag to the desktop leaves: the entry copied, no key in it. The
+ * field code has to survive the comparison, which is where this first went
+ * wrong on a real entry. */
 static void
-test_unmarked_launcher_is_left_alone (Fixture *fixture, gconstpointer data)
+test_unmarked_copy_is_recognized (Fixture *fixture, gconstpointer data)
 {
   GError *error = NULL;
   gchar *path = copy_path (fixture);
-  const gchar *hand_written = "[Desktop Entry]\n"
-                              "Type=Application\n"
-                              "Name=Alpha Browser\n"
-                              "Exec=cat\n";
+  const gchar *dropped = "[Desktop Entry]\n"
+                         "Type=Application\n"
+                         "Name=Alpha Browser\n"
+                         "Exec=cat %F\n";
 
-  g_assert_true (g_file_set_contents (path, hand_written, -1, &error));
+  g_assert_true (g_file_set_contents (path, dropped, -1, &error));
+  g_assert_no_error (error);
+
+  g_assert_true (mocka_pins_desktop_has_copy (fixture->info));
+  g_assert_true (mocka_pins_desktop_remove (fixture->info, &error));
+  g_assert_no_error (error);
+  g_assert_false (g_file_test (path, G_FILE_TEST_EXISTS));
+
+  g_free (path);
+}
+
+/* A launcher whose command the user has changed is not ours to delete. */
+static void
+test_edited_launcher_is_left_alone (Fixture *fixture, gconstpointer data)
+{
+  GError *error = NULL;
+  gchar *path = copy_path (fixture);
+  const gchar *edited = "[Desktop Entry]\n"
+                        "Type=Application\n"
+                        "Name=Alpha Browser\n"
+                        "Exec=cat --mine\n";
+
+  g_assert_true (g_file_set_contents (path, edited, -1, &error));
   g_assert_no_error (error);
 
   g_assert_false (mocka_pins_desktop_has_copy (fixture->info));
@@ -135,7 +159,7 @@ test_unmarked_launcher_is_left_alone (Fixture *fixture, gconstpointer data)
   g_free (path);
 }
 
-/* A marker naming another app does not make the file ours either. */
+/* A key naming another app wins over the matching command. */
 static void
 test_marker_for_another_app_is_not_ours (Fixture *fixture, gconstpointer data)
 {
@@ -144,7 +168,7 @@ test_marker_for_another_app_is_not_ours (Fixture *fixture, gconstpointer data)
   const gchar *other = "[Desktop Entry]\n"
                        "Type=Application\n"
                        "Name=Alpha Browser\n"
-                       "Exec=cat\n"
+                       "Exec=cat %F\n"
                        "X-Mocka-Menu-Copy-Of=beta.desktop\n";
 
   g_assert_true (g_file_set_contents (path, other, -1, &error));
@@ -187,7 +211,8 @@ main (int argc, char **argv)
   ADD ("/pins/desktop/no-copy-at-first", test_no_copy_at_first);
   ADD ("/pins/desktop/add-copies-and-marks", test_add_copies_and_marks);
   ADD ("/pins/desktop/remove-deletes-our-copy", test_remove_deletes_our_copy);
-  ADD ("/pins/desktop/unmarked-launcher-is-left-alone", test_unmarked_launcher_is_left_alone);
+  ADD ("/pins/desktop/unmarked-copy-is-recognized", test_unmarked_copy_is_recognized);
+  ADD ("/pins/desktop/edited-launcher-is-left-alone", test_edited_launcher_is_left_alone);
   ADD ("/pins/desktop/marker-for-another-app-is-not-ours", test_marker_for_another_app_is_not_ours);
   ADD ("/pins/desktop/add-twice-keeps-one-copy", test_add_twice_keeps_one_copy);
 #undef ADD
