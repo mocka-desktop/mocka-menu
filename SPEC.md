@@ -1,6 +1,6 @@
 # Mocka Menu Specification
 
-Status: draft 3
+Status: draft 4
 Component: `mocka-menu`
 License: BSD-3-Clause
 
@@ -316,9 +316,17 @@ Rules:
   folder (XDG `DESKTOP` user directory) and makes the copy executable, so the
   file manager runs it as a launcher. The copy carries
   `X-Mocka-Menu-Copy-Of=<desktop entry ID>`.
-- Remove from Desktop deletes only a copy carrying that key for this app. A
-  launcher written by anything else is never touched, and the app menu offers
-  Add to Desktop while no copy of ours is there.
+- A file in the desktop folder named after the app's desktop entry is
+  recognized as this app's launcher when it carries that key for this app, or,
+  carrying no such key, when its `Exec` is the app's own. A key naming a
+  different app means the file is not this app's launcher. The second rule
+  matters because dragging an app to the desktop is a plain file copy made by
+  the file manager, with no key in it, and the menu has to agree with its own
+  drag.
+- Remove from Desktop deletes only a file recognized that way. Anything else,
+  including a launcher whose command the user has edited, is never touched.
+- The app menu offers Add to Desktop while no launcher for the app is
+  recognized, and Remove from Desktop once one is.
 - Pin, Unpin, Add to Desktop and Remove from Desktop close the app menu and
   leave the menu window open, so the user can continue.
 - An action launches the app, so it closes the menu window like any other
