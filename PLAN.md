@@ -107,7 +107,7 @@ grabs and marco's bindings keep working.
 - [x] Drag apps out to the desktop, a panel, and Mocka Dock
 - [x] Button menu: Edit Menus, About, panel items. Preferences stays hidden until M5; settings are changed with `gsettings` meanwhile
 - [x] Default `favourite-apps` (SPEC section 20), the same four as Mocka Dock's default
-- [ ] Manual test by maintainer
+- [x] Manual test by maintainer
 
 ## M4: Launcher layout
 
