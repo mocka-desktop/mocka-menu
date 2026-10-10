@@ -13,6 +13,7 @@
 #include <mate-panel-applet.h>
 
 #include "classic-view.h"
+#include "favourites.h"
 #include "hotkey.h"
 #include "launch.h"
 #include "menu-data.h"
@@ -40,6 +41,7 @@ struct _MockaMenuApplet
   GtkWidget *menu_window;
   GtkWidget *view;
   MockaMenuData *data;
+  MockaFavourites *favourites;
   MockaHotkey *hotkey;
   GSettings *settings; /* shared by every applet, not owned (SPEC section 15) */
 };
@@ -298,7 +300,8 @@ build_menu_contents (MockaMenuApplet *self)
       return;
     }
 
-  self->view = mocka_classic_view_new (self->data);
+  self->favourites = mocka_favourites_new (self->data, self->settings);
+  self->view = mocka_classic_view_new (self->data, self->favourites);
   g_signal_connect_swapped (self->view, "app-activated", G_CALLBACK (on_app_activated), self);
 
   content = mocka_menu_window_get_content_area (MOCKA_MENU_WINDOW (self->menu_window));
@@ -322,12 +325,78 @@ build_menu_contents (MockaMenuApplet *self)
   g_signal_connect_swapped (self->menu_window, "escape", G_CALLBACK (on_menu_escape), self);
 }
 
+/* MATE's menu editor, or NULL when it is not installed (SPEC section 11.2). */
+static GDesktopAppInfo *
+menu_editor (void)
+{
+  return g_desktop_app_info_new ("mozo.desktop");
+}
+
+static void
+on_edit_menus (GtkAction *action, gpointer user_data)
+{
+  GDesktopAppInfo *editor = menu_editor ();
+
+  if (editor == NULL)
+    {
+      return;
+    }
+
+  mocka_launch_app (editor, GTK_WIDGET (user_data));
+  g_object_unref (editor);
+}
+
+static void
+on_about (GtkAction *action, gpointer user_data)
+{
+  const gchar *authors[] = { "Eric Turgeon", NULL };
+
+  gtk_show_about_dialog (NULL, "program-name", _ ("Mocka Menu"), "version", PACKAGE_VERSION, "comments",
+                         _ ("Application menu for the MATE panel"), "logo-icon-name", "start-here", "copyright",
+                         "Copyright \xc2\xa9 2026 The Mocka Desktop Project", "license-type", GTK_LICENSE_BSD_3,
+                         "authors", authors, "website", "https://github.com/mocka-desktop/mocka-menu", NULL);
+}
+
+/*
+ * The panel's applet menu, shown on right click on the panel button, with our
+ * items above the panel's own (SPEC section 11.2). Preferences arrives with
+ * its window in M5.
+ */
+static void
+setup_button_menu (MockaMenuApplet *self)
+{
+  static const gchar menu_xml[] = "<menuitem name=\"EditMenus\" action=\"EditMenus\" />"
+                                  "<menuitem name=\"About\" action=\"About\" />";
+  GtkActionGroup *group;
+  GDesktopAppInfo *editor = menu_editor ();
+
+  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+  static const GtkActionEntry entries[] = {
+    { "EditMenus", "preferences-system", N_ ("_Edit Menus"), NULL, NULL, G_CALLBACK (on_edit_menus) },
+    { "About", "help-about", N_ ("_About"), NULL, NULL, G_CALLBACK (on_about) },
+  };
+
+  group = gtk_action_group_new ("MockaMenuActions");
+  gtk_action_group_set_translation_domain (group, GETTEXT_PACKAGE);
+  gtk_action_group_add_actions (group, entries, G_N_ELEMENTS (entries), self);
+
+  /* Hidden when the editor is not installed (SPEC section 11.2). */
+  gtk_action_set_visible (gtk_action_group_get_action (group, "EditMenus"), editor != NULL);
+  G_GNUC_END_IGNORE_DEPRECATIONS
+
+  mate_panel_applet_setup_menu (MATE_PANEL_APPLET (self), menu_xml, group);
+
+  g_clear_object (&editor);
+  g_object_unref (group);
+}
+
 static void
 mocka_menu_applet_dispose (GObject *object)
 {
   MockaMenuApplet *self = MOCKA_MENU_APPLET (object);
 
   g_clear_pointer (&self->menu_window, gtk_widget_destroy);
+  g_clear_object (&self->favourites);
   g_clear_object (&self->data);
   g_clear_object (&self->hotkey);
 
@@ -378,6 +447,8 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
   g_signal_connect_swapped (self->settings, "changed::label-visible", G_CALLBACK (update_label), self);
   g_signal_connect_swapped (self->settings, "changed::label-text", G_CALLBACK (update_label), self);
   build_menu_contents (self);
+
+  setup_button_menu (self);
 
   mate_panel_applet_set_flags (applet, MATE_PANEL_APPLET_EXPAND_MINOR);
 

@@ -36,6 +36,8 @@ struct _MockaMenuWindow
   GtkWidget *anchor;  /* the panel button, not owned */
   GtkPositionType panel_side;
   gboolean open;
+  guint handover;    /* drags and popup menus of ours holding the grab */
+  guint regrab;      /* idle waiting to take the grab back */
   guint32 closed_at; /* event time of the last close on the anchor */
 };
 
@@ -162,6 +164,24 @@ on_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data)
   return GDK_EVENT_PROPAGATE;
 }
 
+/* owner_events, so other windows of this process still get their own clicks. */
+static void
+take_grab (MockaMenuWindow *self)
+{
+  GdkSeat *seat = gdk_display_get_default_seat (gtk_widget_get_display (GTK_WIDGET (self)));
+  GdkGrabStatus status = gdk_seat_grab (seat, gtk_widget_get_window (GTK_WIDGET (self)), GDK_SEAT_CAPABILITY_ALL, TRUE,
+                                        NULL, NULL, NULL, NULL);
+
+  if (status == GDK_GRAB_SUCCESS)
+    {
+      self->held_seat = seat;
+    }
+  else
+    {
+      g_warning ("mocka-menu: could not grab the pointer and keyboard");
+    }
+}
+
 /* Something else took the pointer or the keyboard, so we are no longer a menu. */
 static gboolean
 on_grab_broken (GtkWidget *widget, GdkEventGrabBroken *event, gpointer user_data)
@@ -169,6 +189,13 @@ on_grab_broken (GtkWidget *widget, GdkEventGrabBroken *event, gpointer user_data
   MockaMenuWindow *self = MOCKA_MENU_WINDOW (widget);
 
   self->held_seat = NULL; /* the grab is already gone */
+
+  /* Our own drag or app menu took it, not another program, so stay open. */
+  if (self->handover > 0)
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
+
   mocka_menu_window_close (self);
   return GDK_EVENT_PROPAGATE;
 }
@@ -199,8 +226,20 @@ mocka_menu_window_init (MockaMenuWindow *self)
 }
 
 static void
+mocka_menu_window_dispose (GObject *object)
+{
+  MockaMenuWindow *self = MOCKA_MENU_WINDOW (object);
+
+  g_clear_handle_id (&self->regrab, g_source_remove);
+
+  G_OBJECT_CLASS (mocka_menu_window_parent_class)->dispose (object);
+}
+
+static void
 mocka_menu_window_class_init (MockaMenuWindowClass *klass)
 {
+  G_OBJECT_CLASS (klass)->dispose = mocka_menu_window_dispose;
+
   signals[SIGNAL_OPENED]
       = g_signal_new ("opened", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_CLOSED]
@@ -289,9 +328,6 @@ place_near_anchor (MockaMenuWindow *self, GtkWidget *anchor)
 void
 mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor)
 {
-  GdkSeat *seat;
-  GdkGrabStatus status;
-
   g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
 
   if (self->open)
@@ -312,17 +348,7 @@ mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor)
    * applets reach them, not us. A GTK grab sends those here too. */
   gtk_grab_add (GTK_WIDGET (self));
 
-  seat = gdk_display_get_default_seat (gtk_widget_get_display (GTK_WIDGET (self)));
-  status = gdk_seat_grab (seat, gtk_widget_get_window (GTK_WIDGET (self)), GDK_SEAT_CAPABILITY_ALL, TRUE, NULL, NULL,
-                          NULL, NULL);
-  if (status == GDK_GRAB_SUCCESS)
-    {
-      self->held_seat = seat;
-    }
-  else
-    {
-      g_warning ("mocka-menu: could not grab the pointer and keyboard");
-    }
+  take_grab (self);
 
   self->open = TRUE;
   g_signal_emit (self, signals[SIGNAL_OPENED], 0);
@@ -348,7 +374,69 @@ mocka_menu_window_close (MockaMenuWindow *self)
 
   gtk_widget_hide (GTK_WIDGET (self));
   self->open = FALSE;
+  self->handover = 0;
+  g_clear_handle_id (&self->regrab, g_source_remove);
   g_signal_emit (self, signals[SIGNAL_CLOSED], 0);
+}
+
+MockaMenuWindow *
+mocka_menu_window_of (GtkWidget *widget)
+{
+  GtkWidget *toplevel;
+
+  g_return_val_if_fail (GTK_IS_WIDGET (widget), NULL);
+
+  toplevel = gtk_widget_get_toplevel (widget);
+
+  return MOCKA_IS_MENU_WINDOW (toplevel) ? MOCKA_MENU_WINDOW (toplevel) : NULL;
+}
+
+void
+mocka_menu_window_begin_grab_handover (MockaMenuWindow *self)
+{
+  g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
+  self->handover++;
+}
+
+static gboolean
+on_regrab (gpointer data)
+{
+  MockaMenuWindow *self = data;
+
+  self->regrab = 0;
+
+  /*
+   * Unconditionally, not only when held_seat is NULL. GTK's ungrab is not
+   * another grab replacing ours, so no grab-broken event follows it and
+   * held_seat can still name a seat we no longer hold.
+   */
+  if (self->handover == 0 && self->open)
+    {
+      take_grab (self);
+    }
+
+  return G_SOURCE_REMOVE;
+}
+
+/*
+ * From an idle, because GTK releases the drag's grab after it emits drag-end.
+ * Grabbing inside the signal looks like it worked and is then undone, leaving
+ * the menu open with no grab, and with no grab the keyboard goes elsewhere.
+ */
+void
+mocka_menu_window_end_grab_handover (MockaMenuWindow *self)
+{
+  g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
+
+  if (self->handover > 0)
+    {
+      self->handover--;
+    }
+
+  if (self->handover == 0 && self->open && self->regrab == 0)
+    {
+      self->regrab = g_idle_add (on_regrab, self);
+    }
 }
 
 void

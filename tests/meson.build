@@ -6,7 +6,9 @@ test_env.set('XDG_CURRENT_DESKTOP', 'MATE')
 # XDG_DATA_DIRS points only at the fixture, so GSettings would find no schemas
 # at all. Give it the system ones directly instead of widening XDG_DATA_DIRS,
 # which would let the real menu leak into the tests.
+# Ours first, then the system ones for everything else GLib wants.
 test_env.set('GSETTINGS_SCHEMA_DIR',
+  schemas_build_dir + ':' +
   gio_dep.get_variable(pkgconfig: 'prefix') / 'share' / 'glib-2.0' / 'schemas')
 
 # A language with real collation rules, so sorting is not byte order.
@@ -39,3 +41,20 @@ test_classic_placement = executable('test-classic-placement',
   dependencies: [mocka_menu_dep],
 )
 test('classic-placement', test_classic_placement)
+
+test_favourites = executable('test-favourites',
+  'test-favourites.c',
+  dependencies: [mocka_menu_dep, mate_menu_dep],
+)
+test('favourites', test_favourites, env: test_env)
+
+# Writes into a temporary folder of its own, so it needs no menu tree. It does
+# read one fixture entry, which g_test_build_filename finds through G_TEST_SRCDIR.
+pins_env = environment()
+pins_env.set('G_TEST_SRCDIR', meson.current_source_dir())
+
+test_pins = executable('test-pins',
+  'test-pins.c',
+  dependencies: [mocka_menu_dep],
+)
+test('pins', test_pins, env: pins_env)

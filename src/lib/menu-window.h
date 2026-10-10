@@ -31,6 +31,14 @@ void mocka_menu_window_close (MockaMenuWindow *self);
 void mocka_menu_window_toggle (MockaMenuWindow *self, GtkWidget *anchor);
 gboolean mocka_menu_window_is_open (MockaMenuWindow *self);
 
+/* NULL when the widget's window is something else, as in a test harness. */
+MockaMenuWindow *mocka_menu_window_of (GtkWidget *widget);
+
+/* A drag or popup menu of ours takes the pointer, breaking the menu's grab.
+ * Bracket it with these so that does not close the menu. They nest. */
+void mocka_menu_window_begin_grab_handover (MockaMenuWindow *self);
+void mocka_menu_window_end_grab_handover (MockaMenuWindow *self);
+
 /* Where the layout packs itself. */
 GtkWidget *mocka_menu_window_get_content_area (MockaMenuWindow *self);
 

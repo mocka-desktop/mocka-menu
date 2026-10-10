@@ -8,8 +8,13 @@
 
 #include <glib/gi18n-lib.h>
 
+#include <string.h>
+
+#include "app-menu.h"
 #include "classic-view.h"
+#include "menu-window.h"
 #include "search.h"
+#include "session.h"
 
 /* Keeps a value inside a range even when the range itself is empty. */
 static gint
@@ -90,6 +95,7 @@ mocka_classic_view_place (const GdkRectangle *anchor, const GdkRectangle *monito
 }
 
 #define APP_ICON_SIZE 24
+#define FAVOURITE_ICON_SIZE 32
 #define CATEGORY_ICON_SIZE 16
 #define ROW_SPACING 8
 #define ROW_PADDING 4
@@ -104,7 +110,8 @@ struct _MockaClassicView
 {
   GtkBox parent_instance;
 
-  MockaMenuData *data; /* not owned */
+  MockaMenuData *data;         /* not owned */
+  MockaFavourites *favourites; /* not owned */
 
   GtkWidget *entry;
   GtkWidget *columns;       /* the category list beside the app list */
@@ -114,6 +121,18 @@ struct _MockaClassicView
   GtkWidget *category_scroller;
   GtkWidget *app_list;
   GtkWidget *app_scroller;
+  GtkWidget *favourites_list;
+  GtkWidget *favourites_scroller;
+  GtkWidget *favourites_column; /* the favourites above the session controls */
+  GtkWidget *session_box;
+  GtkWidget *session_buttons[MOCKA_SESSION_N_ACTIONS];
+  MockaSession *session; /* owned, built with the view */
+
+  /* Weak, while a drag is running. The dragged row can be destroyed by a
+   * rebuild before the drag ends, and then it can no longer name its own
+   * window, so the window is remembered here instead. */
+  MockaMenuWindow *drag_window;
+  gboolean favourites_pending; /* a change held back until the drag ends */
 
   guint app_count;     /* rows in app_list, for keyboard navigation */
   gulong toplevel_key; /* handler on the window, so the keys come first */
@@ -132,6 +151,7 @@ enum
 static guint view_signals[N_VIEW_SIGNALS];
 
 static void show_apps (MockaClassicView *self, GPtrArray *apps);
+static void apply_favourites_change (MockaClassicView *self);
 
 /*
  * The icon to draw, swapped for a generic one only when the theme has none of
@@ -174,6 +194,170 @@ icon_to_draw (GIcon *icon, const gchar *generic)
   return g_themed_icon_new (generic);
 }
 
+/* Within the menu an app travels as its desktop entry ID. */
+#define APP_TARGET "application/x-mocka-menu-app"
+
+enum
+{
+  TARGET_APP,
+  TARGET_URI_LIST
+};
+
+/*
+ * Dragged out, an app is the URI of its desktop entry, which is what the
+ * desktop, a panel and Mocka Dock all make a launcher from (SPEC section 13).
+ */
+static const GtkTargetEntry drag_targets[] = {
+  { (gchar *)APP_TARGET, GTK_TARGET_SAME_APP, TARGET_APP },
+  { (gchar *)"text/uri-list", 0, TARGET_URI_LIST },
+};
+
+/* The column takes our own apps only, never files from elsewhere. */
+static const GtkTargetEntry drop_targets[] = {
+  { (gchar *)APP_TARGET, GTK_TARGET_SAME_APP, TARGET_APP },
+};
+
+// NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange) two actions combined is not one named value
+static const GdkDragAction APP_DRAG_ACTIONS = GDK_ACTION_COPY | GDK_ACTION_MOVE;
+// NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange)
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters) the drag-data-get signal fixes this signature
+static void
+on_drag_data_get (GtkWidget *row, GdkDragContext *context, GtkSelectionData *selection, guint info, guint time,
+                  gpointer user_data)
+{
+  MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "app");
+  const gchar *file;
+  gchar *uris[2] = { NULL, NULL };
+
+  if (app == NULL)
+    {
+      return;
+    }
+
+  if (info == TARGET_APP)
+    {
+      gtk_selection_data_set (selection, gdk_atom_intern_static_string (APP_TARGET), 8,
+                              (const guchar *)mocka_menu_app_get_id (app), (gint)strlen (mocka_menu_app_get_id (app)));
+      return;
+    }
+
+  file = g_desktop_app_info_get_filename (mocka_menu_app_get_app_info (app));
+  if (file == NULL)
+    {
+      return;
+    }
+
+  uris[0] = g_filename_to_uri (file, NULL, NULL);
+  if (uris[0] != NULL)
+    {
+      gtk_selection_data_set_uris (selection, uris);
+    }
+
+  g_free (uris[0]);
+}
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
+static void
+on_drag_begin (GtkWidget *row, GdkDragContext *context, MockaClassicView *self)
+{
+  MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "app");
+  GIcon *icon = app != NULL ? mocka_menu_app_get_icon (app) : NULL;
+  MockaMenuWindow *window = mocka_menu_window_of (row);
+
+  if (icon != NULL)
+    {
+      gtk_drag_set_icon_gicon (context, icon, 0, 0);
+    }
+
+  if (window == NULL || self->drag_window != NULL)
+    {
+      return;
+    }
+
+  self->drag_window = window;
+  g_object_add_weak_pointer (G_OBJECT (window), (gpointer *)&self->drag_window);
+  mocka_menu_window_begin_grab_handover (window);
+}
+
+static void
+on_drag_end (GtkWidget *row, GdkDragContext *context, MockaClassicView *self)
+{
+  MockaMenuWindow *window = self->drag_window;
+
+  if (window == NULL)
+    {
+      return;
+    }
+
+  g_object_remove_weak_pointer (G_OBJECT (window), (gpointer *)&self->drag_window);
+  self->drag_window = NULL;
+  mocka_menu_window_end_grab_handover (window);
+
+  /* Safe now: the row this ran on is no longer needed. */
+  if (self->favourites_pending)
+    {
+      apply_favourites_change (self);
+    }
+}
+
+static gboolean
+on_row_button_press (GtkWidget *events, GdkEventButton *event, MockaClassicView *self)
+{
+  MockaMenuApp *app = g_object_get_data (G_OBJECT (events), "app");
+
+  if (event->button != GDK_BUTTON_SECONDARY || app == NULL || self->favourites == NULL)
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
+
+  mocka_app_menu_popup (app, self->favourites, events, (const GdkEvent *)event);
+
+  return GDK_EVENT_STOP;
+}
+
+/* GTK emits this for the Menu key and Shift + F10 (SPEC section 12.2). */
+static gboolean
+on_row_popup_menu (GtkWidget *row, MockaClassicView *self)
+{
+  MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "app");
+
+  if (app == NULL || self->favourites == NULL)
+    {
+      return FALSE;
+    }
+
+  mocka_app_menu_popup (app, self->favourites, row, NULL);
+
+  return TRUE;
+}
+
+/*
+ * A list row has no window of its own, so a drag source on it never sees the
+ * button events. The content goes inside an event box, which has one, and
+ * that is what drags and what catches the right click.
+ */
+static GtkWidget *
+draggable_holder (GtkWidget *row, MockaMenuApp *app, MockaClassicView *self)
+{
+  GtkWidget *events = gtk_event_box_new ();
+
+  gtk_event_box_set_visible_window (GTK_EVENT_BOX (events), FALSE);
+  gtk_container_add (GTK_CONTAINER (row), events);
+
+  /* The row holds the reference; this one only borrows it. */
+  g_object_set_data (G_OBJECT (events), "app", app);
+
+  gtk_drag_source_set (events, GDK_BUTTON1_MASK, drag_targets, G_N_ELEMENTS (drag_targets), APP_DRAG_ACTIONS);
+  g_signal_connect (events, "drag-data-get", G_CALLBACK (on_drag_data_get), NULL);
+  g_signal_connect (events, "drag-begin", G_CALLBACK (on_drag_begin), self);
+  g_signal_connect (events, "drag-end", G_CALLBACK (on_drag_end), self);
+  g_signal_connect (events, "button-press-event", G_CALLBACK (on_row_button_press), self);
+  g_signal_connect (row, "popup-menu", G_CALLBACK (on_row_popup_menu), self);
+
+  return events;
+}
+
 /* gtk_widget_destroy does not have the shape gtk_container_foreach wants. */
 static void
 destroy_row (GtkWidget *widget, gpointer user_data)
@@ -183,7 +367,7 @@ destroy_row (GtkWidget *widget, gpointer user_data)
 
 /* One row: icon, name, and the app's comment as its tooltip. */
 static GtkWidget *
-make_app_row (MockaMenuApp *app)
+make_app_row (MockaMenuApp *app, MockaClassicView *self)
 {
   GtkWidget *row = gtk_list_box_row_new ();
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, ROW_SPACING);
@@ -200,7 +384,6 @@ make_app_row (MockaMenuApp *app)
   gtk_box_pack_start (GTK_BOX (box), image, FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (box), label, TRUE, TRUE, 0);
   gtk_container_set_border_width (GTK_CONTAINER (box), ROW_PADDING);
-  gtk_container_add (GTK_CONTAINER (row), box);
 
   if (comment != NULL && *comment != '\0')
     {
@@ -208,6 +391,29 @@ make_app_row (MockaMenuApp *app)
     }
 
   g_object_set_data_full (G_OBJECT (row), "app", g_object_ref (app), g_object_unref);
+  gtk_container_add (GTK_CONTAINER (draggable_holder (row, app, self)), box);
+
+  return row;
+}
+
+/* One favourite: its icon, with its name as the tooltip (SPEC section 8). */
+static GtkWidget *
+make_favourite_row (MockaMenuApp *app, MockaClassicView *self)
+{
+  GtkWidget *row = gtk_list_box_row_new ();
+  GIcon *icon = icon_to_draw (mocka_menu_app_get_icon (app), "application-x-executable");
+  GtkWidget *image = gtk_image_new_from_gicon (icon, GTK_ICON_SIZE_DND);
+
+  g_object_unref (icon);
+  gtk_image_set_pixel_size (GTK_IMAGE (image), FAVOURITE_ICON_SIZE);
+  gtk_widget_set_margin_top (image, ROW_PADDING);
+  gtk_widget_set_margin_bottom (image, ROW_PADDING);
+  gtk_widget_set_margin_start (image, ROW_PADDING);
+  gtk_widget_set_margin_end (image, ROW_PADDING);
+
+  gtk_widget_set_tooltip_text (row, mocka_menu_app_get_name (app));
+  g_object_set_data_full (G_OBJECT (row), "app", g_object_ref (app), g_object_unref);
+  gtk_container_add (GTK_CONTAINER (draggable_holder (row, app, self)), image);
 
   return row;
 }
@@ -337,8 +543,9 @@ on_search_changed (GtkSearchEntry *entry, MockaClassicView *self)
       return;
     }
 
-  /* Favourites come first within a rank; the list of them arrives in M3. */
-  results = mocka_search_run (mocka_menu_data_get_all_apps (self->data), text, NULL);
+  /* Favourites come first within a rank (SPEC section 9.2). */
+  results = mocka_search_run (mocka_menu_data_get_all_apps (self->data), text,
+                              self->favourites != NULL ? mocka_favourites_get_ids (self->favourites) : NULL);
   show_apps (self, results);
   g_ptr_array_unref (results);
 }
@@ -599,6 +806,192 @@ on_category_activated (GtkListBox *list, GtkListBoxRow *row, MockaClassicView *s
 }
 
 static void
+show_favourites (MockaClassicView *self)
+{
+  GPtrArray *apps;
+
+  if (self->favourites == NULL)
+    {
+      return;
+    }
+
+  gtk_container_foreach (GTK_CONTAINER (self->favourites_list), destroy_row, NULL);
+
+  apps = mocka_favourites_get_apps (self->favourites);
+  for (guint i = 0; i < apps->len; i++)
+    {
+      gtk_container_add (GTK_CONTAINER (self->favourites_list), make_favourite_row (g_ptr_array_index (apps, i), self));
+    }
+
+  /*
+   * Shown even with nothing in it. The column stays for the session controls
+   * at its bottom (SPEC section 10), and an empty list is still the drop
+   * target, which is the only way to put the first favourite back.
+   */
+  gtk_widget_show_all (self->favourites_list);
+  gtk_widget_show (self->favourites_scroller);
+}
+
+static void
+apply_favourites_change (MockaClassicView *self)
+{
+  self->favourites_pending = FALSE;
+  show_favourites (self);
+
+  /* Favourites come first within a rank, so a showing search is now stale
+   * (SPEC section 9.2). */
+  if (mocka_classic_view_is_searching (self))
+    {
+      on_search_changed (GTK_SEARCH_ENTRY (self->entry), self);
+    }
+}
+
+/*
+ * A drop on the column changes the favourites while the drag is still
+ * running, and rebuilding now would destroy the row being dragged. GTK then
+ * never emits drag-end for it, the menu never takes its grab back, and the
+ * keyboard is left pointing somewhere else. So the rebuild waits for the drag
+ * to finish.
+ */
+static void
+on_favourites_changed (MockaClassicView *self)
+{
+  if (self->drag_window != NULL)
+    {
+      self->favourites_pending = TRUE;
+      return;
+    }
+
+  apply_favourites_change (self);
+}
+
+static void
+on_session_button (GtkWidget *button, MockaClassicView *self)
+{
+  MockaSessionAction action = (MockaSessionAction)GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (button), "action"));
+  MockaMenuWindow *window = mocka_menu_window_of (button);
+
+  /* The window closes at once, without waiting for the call (SPEC section 10). */
+  if (window != NULL)
+    {
+      mocka_menu_window_close (window);
+    }
+
+  mocka_session_run (self->session, action);
+}
+
+/* A service that is not there hides its button (SPEC section 10). */
+static void
+show_session_buttons (MockaClassicView *self)
+{
+  gboolean any = FALSE;
+
+  for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
+    {
+      gboolean can = mocka_session_can (self->session, i);
+
+      gtk_widget_set_visible (self->session_buttons[i], can);
+      any = any || can;
+    }
+
+  gtk_widget_set_visible (self->session_box, any);
+}
+
+static void
+build_session_buttons (MockaClassicView *self)
+{
+  self->session_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+
+  for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
+    {
+      GtkWidget *button = gtk_button_new_from_icon_name (mocka_session_action_icon (i), GTK_ICON_SIZE_LARGE_TOOLBAR);
+
+      gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
+      gtk_widget_set_tooltip_text (button, mocka_session_action_name (i));
+      g_object_set_data (G_OBJECT (button), "action", GUINT_TO_POINTER (i));
+      g_signal_connect (button, "clicked", G_CALLBACK (on_session_button), self);
+
+      /* The applet shows the whole view at once, which would reveal a button
+       * whose service is missing. */
+      gtk_widget_set_no_show_all (button, TRUE);
+
+      self->session_buttons[i] = button;
+      gtk_box_pack_start (GTK_BOX (self->session_box), button, FALSE, FALSE, 0);
+    }
+
+  gtk_widget_set_no_show_all (self->session_box, TRUE);
+
+  self->session = mocka_session_new ();
+  g_signal_connect_swapped (self->session, "changed", G_CALLBACK (show_session_buttons), self);
+  show_session_buttons (self);
+}
+
+/*
+ * Where a drop lands, counting rows from the top. Past the middle of a row
+ * means after it, which is how dropping at the very bottom appends.
+ */
+static gint
+favourite_drop_position (MockaClassicView *self, gint y)
+{
+  GtkListBoxRow *row = gtk_list_box_get_row_at_y (GTK_LIST_BOX (self->favourites_list), y);
+  GtkAllocation alloc;
+
+  if (row == NULL)
+    {
+      return -1;
+    }
+
+  gtk_widget_get_allocation (GTK_WIDGET (row), &alloc);
+
+  return gtk_list_box_row_get_index (row) + (y > alloc.y + alloc.height / 2 ? 1 : 0);
+}
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters) the drag-data-received signal fixes this signature
+static void
+on_favourites_drop (GtkWidget *widget, GdkDragContext *context, gint x, gint y, GtkSelectionData *selection, guint info,
+                    guint time, MockaClassicView *self)
+{
+  const guchar *raw = gtk_selection_data_get_data (selection);
+  gint length = gtk_selection_data_get_length (selection);
+  gchar *id;
+  gint position;
+
+  if (raw == NULL || length <= 0 || self->favourites == NULL)
+    {
+      gtk_drag_finish (context, FALSE, FALSE, time);
+      return;
+    }
+
+  id = g_strndup ((const gchar *)raw, (gsize)length);
+  position = favourite_drop_position (self, y);
+
+  /* Already a favourite, so this is a reordering (SPEC section 8). */
+  if (mocka_favourites_contains (self->favourites, id))
+    {
+      mocka_favourites_move (self->favourites, id, position);
+    }
+  else
+    {
+      mocka_favourites_add (self->favourites, id, position);
+    }
+
+  g_free (id);
+  gtk_drag_finish (context, TRUE, FALSE, time);
+}
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
+static void
+on_favourite_activated (GtkListBox *list, GtkListBoxRow *row, MockaClassicView *self)
+{
+  MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "app");
+
+  if (app != NULL)
+    {
+      g_signal_emit (self, view_signals[SIGNAL_APP_ACTIVATED], 0, app);
+    }
+}
+
+static void
 on_app_activated (GtkListBox *list, GtkListBoxRow *row, MockaClassicView *self)
 {
   MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "app");
@@ -618,7 +1011,7 @@ show_apps (MockaClassicView *self, GPtrArray *apps)
 
   for (guint i = 0; apps != NULL && i < apps->len; i++)
     {
-      GtkWidget *row = make_app_row (g_ptr_array_index (apps, i));
+      GtkWidget *row = make_app_row (g_ptr_array_index (apps, i), self);
 
       gtk_container_add (GTK_CONTAINER (self->app_list), row);
     }
@@ -788,6 +1181,31 @@ mocka_classic_view_init (MockaClassicView *self)
   gtk_box_pack_start (GTK_BOX (self->left_column), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->left_column), self->settings_list, FALSE, FALSE, 0);
 
+  /* Leftmost in both layouts (SPEC section 8). */
+  self->favourites_list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->favourites_list), GTK_SELECTION_NONE);
+
+  self->favourites_scroller = gtk_scrolled_window_new (NULL, NULL);
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self->favourites_scroller), GTK_POLICY_NEVER,
+                                  GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_propagate_natural_width (GTK_SCROLLED_WINDOW (self->favourites_scroller), TRUE);
+  gtk_widget_set_no_show_all (self->favourites_scroller, TRUE);
+  gtk_container_add (GTK_CONTAINER (self->favourites_scroller), self->favourites_list);
+
+  gtk_drag_dest_set (self->favourites_list, GTK_DEST_DEFAULT_ALL, drop_targets, G_N_ELEMENTS (drop_targets),
+                     APP_DRAG_ACTIONS);
+  g_signal_connect (self->favourites_list, "drag-data-received", G_CALLBACK (on_favourites_drop), self);
+  g_signal_connect (self->favourites_list, "row-activated", G_CALLBACK (on_favourite_activated), self);
+
+  build_session_buttons (self);
+
+  /* Favourites above, session controls at the bottom (SPEC sections 8 and 10). */
+  self->favourites_column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+  gtk_box_pack_start (GTK_BOX (self->favourites_column), self->favourites_scroller, TRUE, TRUE, 0);
+  gtk_box_pack_end (GTK_BOX (self->favourites_column), self->session_box, FALSE, FALSE, 0);
+
+  gtk_box_pack_start (GTK_BOX (self->columns), self->favourites_column, FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (self->columns), gtk_separator_new (GTK_ORIENTATION_VERTICAL), FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->columns), self->left_column, FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->columns), gtk_separator_new (GTK_ORIENTATION_VERTICAL), FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->columns), self->app_scroller, TRUE, TRUE, 0);
@@ -810,8 +1228,26 @@ mocka_classic_view_init (MockaClassicView *self)
 }
 
 static void
+mocka_classic_view_dispose (GObject *object)
+{
+  MockaClassicView *self = MOCKA_CLASSIC_VIEW (object);
+
+  if (self->drag_window != NULL)
+    {
+      g_object_remove_weak_pointer (G_OBJECT (self->drag_window), (gpointer *)&self->drag_window);
+      self->drag_window = NULL;
+    }
+
+  g_clear_object (&self->session);
+
+  G_OBJECT_CLASS (mocka_classic_view_parent_class)->dispose (object);
+}
+
+static void
 mocka_classic_view_class_init (MockaClassicViewClass *klass)
 {
+  G_OBJECT_CLASS (klass)->dispose = mocka_classic_view_dispose;
+
   view_signals[SIGNAL_APP_ACTIVATED] = g_signal_new ("app-activated", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
                                                      NULL, NULL, NULL, G_TYPE_NONE, 1, MOCKA_TYPE_MENU_APP);
 }
@@ -852,11 +1288,18 @@ mocka_classic_view_clear_search (MockaClassicView *self)
 }
 
 GtkWidget *
-mocka_classic_view_new (MockaMenuData *data)
+mocka_classic_view_new (MockaMenuData *data, MockaFavourites *favourites)
 {
   MockaClassicView *self = g_object_new (MOCKA_TYPE_CLASSIC_VIEW, NULL);
 
   self->data = data;
+  self->favourites = favourites;
+
+  if (favourites != NULL)
+    {
+      g_signal_connect_swapped (favourites, "changed", G_CALLBACK (on_favourites_changed), self);
+    }
+  show_favourites (self);
   mocka_classic_view_rebuild (self);
 
   return GTK_WIDGET (self);

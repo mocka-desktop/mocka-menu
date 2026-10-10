@@ -2,6 +2,6 @@
 Type=Application
 Name=Alpha Browser
 Comment=Browses things
-Exec=cat
+Exec=cat %F
 Icon=web-browser
 Categories=Network;

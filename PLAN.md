@@ -96,18 +96,18 @@ grabs and marco's bindings keep working.
 - [x] Keyboard navigation in the menu window (SPEC section 12.2)
 - [x] Super alone through XInput 2 raw events, `hot-key` setting
 - [x] Hotkey ownership across applets: the owner holds an X manager selection, other applets watch it and take over when the owner goes away
-- [ ] Manual test by maintainer
+- [x] Manual test by maintainer
 
 ## M3: Favourites, session controls, app menu
 
-- [ ] `favourite-apps` storage and live updates, uninstalled apps skipped and kept
-- [ ] Favourites column: launch, tooltips, scrolling, drag to add, drag to reorder
-- [ ] Session controls: async calls, hidden when the service is missing
-- [ ] App menu: desktop actions, Pin to Favourites, Pin to Dock (shown only with the dock schema installed), Add to Desktop and Remove from Desktop, with unit tests for the desktop copy and its recognition
-- [ ] Drag apps out to the desktop, a panel, and Mocka Dock
-- [ ] Button menu: Edit Menus, About, panel items. Preferences stays hidden until M5; settings are changed with `gsettings` meanwhile
-- [ ] Default `favourite-apps` (SPEC section 20)
-- [ ] Manual test by maintainer
+- [x] `favourite-apps` storage and live updates, uninstalled apps skipped and kept
+- [x] Favourites column: launch, tooltips, scrolling, drag to add, drag to reorder
+- [x] App menu: desktop actions, Pin to Favourites, Pin to Dock (shown only with the dock schema installed), Add to Desktop and Remove from Desktop, with unit tests for the desktop copy and its recognition. Comes right after the column, since Unpin from Favourites is the only way to take a favourite out
+- [x] Session controls: async calls, hidden when the service is missing
+- [x] Drag apps out to the desktop, a panel, and Mocka Dock
+- [x] Button menu: Edit Menus, About, panel items. Preferences stays hidden until M5; settings are changed with `gsettings` meanwhile
+- [x] Default `favourite-apps` (SPEC section 20), the same four as Mocka Dock's default
+- [x] Manual test by maintainer
 
 ## M4: Launcher layout
 

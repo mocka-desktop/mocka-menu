@@ -8,6 +8,7 @@
 
 #include <gtk/gtk.h>
 
+#include "favourites.h"
 #include "menu-data.h"
 
 G_BEGIN_DECLS
@@ -17,8 +18,8 @@ G_BEGIN_DECLS
 #define MOCKA_TYPE_CLASSIC_VIEW (mocka_classic_view_get_type ())
 G_DECLARE_FINAL_TYPE (MockaClassicView, mocka_classic_view, MOCKA, CLASSIC_VIEW, GtkBox)
 
-/* The category list and the app list. Does not own the data. */
-GtkWidget *mocka_classic_view_new (MockaMenuData *data);
+/* Owns neither the menu nor the favourites, and both must outlive it. */
+GtkWidget *mocka_classic_view_new (MockaMenuData *data, MockaFavourites *favourites);
 
 /* Back to "All", scrolled to the top, nothing selected (SPEC section 4). */
 void mocka_classic_view_reset (MockaClassicView *self);
