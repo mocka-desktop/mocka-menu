@@ -128,6 +128,12 @@ struct _MockaClassicView
   GtkWidget *session_buttons[MOCKA_SESSION_N_ACTIONS];
   MockaSession *session; /* owned, built with the view */
 
+  /* Weak, while a drag is running. The dragged row can be destroyed by a
+   * rebuild before the drag ends, and then it can no longer name its own
+   * window, so the window is remembered here instead. */
+  MockaMenuWindow *drag_window;
+  gboolean favourites_pending; /* a change held back until the drag ends */
+
   guint app_count;     /* rows in app_list, for keyboard navigation */
   gulong toplevel_key; /* handler on the window, so the keys come first */
   gint saved_category; /* the category to put back when a search is cleared */
@@ -145,6 +151,7 @@ enum
 static guint view_signals[N_VIEW_SIGNALS];
 
 static void show_apps (MockaClassicView *self, GPtrArray *apps);
+static void apply_favourites_change (MockaClassicView *self);
 
 /*
  * The icon to draw, swapped for a generic one only when the theme has none of
@@ -252,7 +259,7 @@ on_drag_data_get (GtkWidget *row, GdkDragContext *context, GtkSelectionData *sel
 // NOLINTEND(bugprone-easily-swappable-parameters)
 
 static void
-on_drag_begin (GtkWidget *row, GdkDragContext *context, gpointer user_data)
+on_drag_begin (GtkWidget *row, GdkDragContext *context, MockaClassicView *self)
 {
   MockaMenuApp *app = g_object_get_data (G_OBJECT (row), "app");
   GIcon *icon = app != NULL ? mocka_menu_app_get_icon (app) : NULL;
@@ -263,20 +270,34 @@ on_drag_begin (GtkWidget *row, GdkDragContext *context, gpointer user_data)
       gtk_drag_set_icon_gicon (context, icon, 0, 0);
     }
 
-  if (window != NULL)
+  if (window == NULL || self->drag_window != NULL)
     {
-      mocka_menu_window_begin_grab_handover (window);
+      return;
     }
+
+  self->drag_window = window;
+  g_object_add_weak_pointer (G_OBJECT (window), (gpointer *)&self->drag_window);
+  mocka_menu_window_begin_grab_handover (window);
 }
 
 static void
-on_drag_end (GtkWidget *row, GdkDragContext *context, gpointer user_data)
+on_drag_end (GtkWidget *row, GdkDragContext *context, MockaClassicView *self)
 {
-  MockaMenuWindow *window = mocka_menu_window_of (row);
+  MockaMenuWindow *window = self->drag_window;
 
-  if (window != NULL)
+  if (window == NULL)
     {
-      mocka_menu_window_end_grab_handover (window);
+      return;
+    }
+
+  g_object_remove_weak_pointer (G_OBJECT (window), (gpointer *)&self->drag_window);
+  self->drag_window = NULL;
+  mocka_menu_window_end_grab_handover (window);
+
+  /* Safe now: the row this ran on is no longer needed. */
+  if (self->favourites_pending)
+    {
+      apply_favourites_change (self);
     }
 }
 
@@ -329,8 +350,8 @@ draggable_holder (GtkWidget *row, MockaMenuApp *app, MockaClassicView *self)
 
   gtk_drag_source_set (events, GDK_BUTTON1_MASK, drag_targets, G_N_ELEMENTS (drag_targets), APP_DRAG_ACTIONS);
   g_signal_connect (events, "drag-data-get", G_CALLBACK (on_drag_data_get), NULL);
-  g_signal_connect (events, "drag-begin", G_CALLBACK (on_drag_begin), NULL);
-  g_signal_connect (events, "drag-end", G_CALLBACK (on_drag_end), NULL);
+  g_signal_connect (events, "drag-begin", G_CALLBACK (on_drag_begin), self);
+  g_signal_connect (events, "drag-end", G_CALLBACK (on_drag_end), self);
   g_signal_connect (events, "button-press-event", G_CALLBACK (on_row_button_press), self);
   g_signal_connect (row, "popup-menu", G_CALLBACK (on_row_popup_menu), self);
 
@@ -812,8 +833,9 @@ show_favourites (MockaClassicView *self)
 }
 
 static void
-on_favourites_changed (MockaClassicView *self)
+apply_favourites_change (MockaClassicView *self)
 {
+  self->favourites_pending = FALSE;
   show_favourites (self);
 
   /* Favourites come first within a rank, so a showing search is now stale
@@ -822,6 +844,25 @@ on_favourites_changed (MockaClassicView *self)
     {
       on_search_changed (GTK_SEARCH_ENTRY (self->entry), self);
     }
+}
+
+/*
+ * A drop on the column changes the favourites while the drag is still
+ * running, and rebuilding now would destroy the row being dragged. GTK then
+ * never emits drag-end for it, the menu never takes its grab back, and the
+ * keyboard is left pointing somewhere else. So the rebuild waits for the drag
+ * to finish.
+ */
+static void
+on_favourites_changed (MockaClassicView *self)
+{
+  if (self->drag_window != NULL)
+    {
+      self->favourites_pending = TRUE;
+      return;
+    }
+
+  apply_favourites_change (self);
 }
 
 static void
@@ -1190,6 +1231,12 @@ static void
 mocka_classic_view_dispose (GObject *object)
 {
   MockaClassicView *self = MOCKA_CLASSIC_VIEW (object);
+
+  if (self->drag_window != NULL)
+    {
+      g_object_remove_weak_pointer (G_OBJECT (self->drag_window), (gpointer *)&self->drag_window);
+      self->drag_window = NULL;
+    }
 
   g_clear_object (&self->session);
 

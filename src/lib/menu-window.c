@@ -37,6 +37,7 @@ struct _MockaMenuWindow
   GtkPositionType panel_side;
   gboolean open;
   guint handover;    /* drags and popup menus of ours holding the grab */
+  guint regrab;      /* idle waiting to take the grab back */
   guint32 closed_at; /* event time of the last close on the anchor */
 };
 
@@ -225,8 +226,20 @@ mocka_menu_window_init (MockaMenuWindow *self)
 }
 
 static void
+mocka_menu_window_dispose (GObject *object)
+{
+  MockaMenuWindow *self = MOCKA_MENU_WINDOW (object);
+
+  g_clear_handle_id (&self->regrab, g_source_remove);
+
+  G_OBJECT_CLASS (mocka_menu_window_parent_class)->dispose (object);
+}
+
+static void
 mocka_menu_window_class_init (MockaMenuWindowClass *klass)
 {
+  G_OBJECT_CLASS (klass)->dispose = mocka_menu_window_dispose;
+
   signals[SIGNAL_OPENED]
       = g_signal_new ("opened", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
   signals[SIGNAL_CLOSED]
@@ -362,6 +375,7 @@ mocka_menu_window_close (MockaMenuWindow *self)
   gtk_widget_hide (GTK_WIDGET (self));
   self->open = FALSE;
   self->handover = 0;
+  g_clear_handle_id (&self->regrab, g_source_remove);
   g_signal_emit (self, signals[SIGNAL_CLOSED], 0);
 }
 
@@ -384,6 +398,31 @@ mocka_menu_window_begin_grab_handover (MockaMenuWindow *self)
   self->handover++;
 }
 
+static gboolean
+on_regrab (gpointer data)
+{
+  MockaMenuWindow *self = data;
+
+  self->regrab = 0;
+
+  /*
+   * Unconditionally, not only when held_seat is NULL. GTK's ungrab is not
+   * another grab replacing ours, so no grab-broken event follows it and
+   * held_seat can still name a seat we no longer hold.
+   */
+  if (self->handover == 0 && self->open)
+    {
+      take_grab (self);
+    }
+
+  return G_SOURCE_REMOVE;
+}
+
+/*
+ * From an idle, because GTK releases the drag's grab after it emits drag-end.
+ * Grabbing inside the signal looks like it worked and is then undone, leaving
+ * the menu open with no grab, and with no grab the keyboard goes elsewhere.
+ */
 void
 mocka_menu_window_end_grab_handover (MockaMenuWindow *self)
 {
@@ -394,9 +433,9 @@ mocka_menu_window_end_grab_handover (MockaMenuWindow *self)
       self->handover--;
     }
 
-  if (self->handover == 0 && self->open && self->held_seat == NULL)
+  if (self->handover == 0 && self->open && self->regrab == 0)
     {
-      take_grab (self);
+      self->regrab = g_idle_add (on_regrab, self);
     }
 }
 
