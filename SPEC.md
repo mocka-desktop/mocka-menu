@@ -1,6 +1,6 @@
 # Mocka Menu Specification
 
-Status: draft 4
+Status: draft 5
 Component: `mocka-menu`
 License: BSD-3-Clause
 
@@ -491,6 +491,9 @@ logind, or Python.
 - `layout` defaults to `classic`.
 - The category list ends with a Settings item that launches the desktop's
   settings application. The categories themselves stay in menu order.
+- The Launcher grid scrolls vertically. Paging stays a later idea
+  (section 22), so the grid matches the scrolling the app list, the category
+  list and the favourites column already do.
 
 ## 21. Not included
 
@@ -514,5 +517,4 @@ logind, or Python.
 
 ## 23. Open questions
 
-- Launcher: vertical scrolling for now (section 7). Confirm, or move paging
-  from section 22 into the first release.
+None at present.
