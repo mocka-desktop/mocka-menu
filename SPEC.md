@@ -1,6 +1,6 @@
 # Mocka Menu Specification
 
-Status: draft 6
+Status: draft 7
 Component: `mocka-menu`
 License: BSD-3-Clause
 
@@ -186,10 +186,18 @@ The search entry is centered at the top of the screen (section 9.3).
 - The grid is centered in the window and holds a fixed number of columns, so
   it reads as a block in the middle of the screen rather than a band stretched
   across a wide monitor.
-- The number of columns drops when the window is too narrow for all of them.
-- The grid scrolls vertically when it does not fit.
+- The number of columns, and the number of rows, drop when the window is too
+  small for all of them.
+- Apps that do not fit go on further pages. The grid does not scroll.
+- Below the grid, one dot per page shows which page is showing. Clicking a dot
+  goes to that page.
+- An arrow on each side of the grid moves one page. Each is hidden on the page
+  where it would do nothing, and both are hidden when everything fits on one
+  page, along with the dots.
+- The mouse wheel moves one page, as do Page Up and Page Down. Moving past the
+  last tile of a page with the arrow keys carries on to the next page.
 - While search text is present, the grid shows search results in ranking
-  order (section 9.2).
+  order (section 9.2), paged the same way.
 
 ## 8. Favourites
 
@@ -495,9 +503,9 @@ logind, or Python.
 - `layout` defaults to `classic`.
 - The category list ends with a Settings item that launches the desktop's
   settings application. The categories themselves stay in menu order.
-- The Launcher grid scrolls vertically. Paging stays a later idea
-  (section 22), so the grid matches the scrolling the app list, the category
-  list and the favourites column already do.
+- The Launcher grid is paged, with dots and side arrows, rather than scrolled.
+  A full-screen grid of large tiles reads as pages, not as a long list, and
+  the apps stay in one place on a page instead of moving under a scrollbar.
 
 ## 21. Not included
 
@@ -509,8 +517,7 @@ logind, or Python.
 
 - A setting to show session controls as a single power button with a popup
   instead of separate buttons.
-- Paged grid with horizontal swiping in the Launcher, as an alternative to
-  vertical scrolling.
+- Swiping between the Launcher's pages on a touchpad or a touchscreen.
 
 ### Nice to have
 
