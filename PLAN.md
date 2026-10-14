@@ -32,8 +32,10 @@ must be clean before a release.
 | `src/lib/menu-window.c` | Shared window logic: open, close, grabs, state reset, window type (SPEC section 4) |
 | `src/lib/classic-view.c` | Classic layout (SPEC section 6) |
 | `src/lib/launcher-view.c` | Launcher layout (SPEC section 7) |
+| `src/lib/app-item.c` | One app as a row, an icon or a tile, with its drag source and app menu, and the running drag both layouts wait on |
+| `src/lib/category-list.c` | "All", the categories and the Settings shortcut, shared by both layouts (SPEC section 6) |
 | `src/lib/favourites.c` | `favourite-apps` storage and the favourites column (SPEC section 8) |
-| `src/lib/session.c` | Session controls over GDBus, service availability (SPEC section 10) |
+| `src/lib/session.c` | Session controls over GDBus, service availability, and the button bar (SPEC section 10) |
 | `src/lib/app-menu.c` | App menu: desktop actions, favourites, dock, desktop (SPEC section 11.1) |
 | `src/lib/pins.c` | Dock pinning through `org.mocka_desktop.Dock`, desktop copies (SPEC sections 11.1, 13) |
 | `src/lib/hotkey.c` | Super alone through XInput 2 raw events, ownership across applets through an X manager selection (SPEC section 12.1) |

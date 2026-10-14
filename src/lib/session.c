@@ -8,6 +8,7 @@
 
 #include <glib/gi18n-lib.h>
 
+#include "menu-window.h"
 #include "session.h"
 
 typedef struct
@@ -332,4 +333,98 @@ mocka_session_run (MockaSession *self, MockaSessionAction action)
   g_dbus_connection_call (bus_for (self, action), services[action].name, path_for (self, action),
                           services[action].interface, services[action].method, args, NULL, G_DBUS_CALL_FLAGS_NONE, -1,
                           self->cancellable, on_call_done, (gpointer)services[action].method);
+}
+/* The buttons, SPEC section 10. */
+
+struct _MockaSessionBar
+{
+  GtkBox parent_instance;
+
+  MockaSession *session; /* owned */
+  GtkWidget *buttons[MOCKA_SESSION_N_ACTIONS];
+};
+
+G_DEFINE_TYPE (MockaSessionBar, mocka_session_bar, GTK_TYPE_BOX)
+
+static void
+on_clicked (GtkWidget *button, MockaSessionBar *self)
+{
+  MockaSessionAction action = (MockaSessionAction)GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (button), "action"));
+  MockaMenuWindow *window = mocka_menu_window_of (button);
+
+  /* The window closes at once, without waiting for the call (SPEC section 10). */
+  if (window != NULL)
+    {
+      mocka_menu_window_close (window);
+    }
+
+  mocka_session_run (self->session, action);
+}
+
+/* A service that is not there hides its button (SPEC section 10). */
+static void
+update_buttons (MockaSessionBar *self)
+{
+  gboolean any = FALSE;
+
+  for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
+    {
+      gboolean can = mocka_session_can (self->session, i);
+
+      gtk_widget_set_visible (self->buttons[i], can);
+      any = any || can;
+    }
+
+  gtk_widget_set_visible (GTK_WIDGET (self), any);
+}
+
+static void
+mocka_session_bar_init (MockaSessionBar *self)
+{
+  gtk_orientable_set_orientation (GTK_ORIENTABLE (self), GTK_ORIENTATION_VERTICAL);
+
+  for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
+    {
+      GtkWidget *button = gtk_button_new_from_icon_name (mocka_session_action_icon (i), GTK_ICON_SIZE_LARGE_TOOLBAR);
+
+      gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
+      gtk_widget_set_tooltip_text (button, mocka_session_action_name (i));
+      g_object_set_data (G_OBJECT (button), "action", GUINT_TO_POINTER (i));
+      g_signal_connect (button, "clicked", G_CALLBACK (on_clicked), self);
+
+      /* A layout shows its whole tree at once, which would reveal a button
+       * whose service is missing. */
+      gtk_widget_set_no_show_all (button, TRUE);
+
+      self->buttons[i] = button;
+      gtk_box_pack_start (GTK_BOX (self), button, FALSE, FALSE, 0);
+    }
+
+  gtk_widget_set_no_show_all (GTK_WIDGET (self), TRUE);
+
+  self->session = mocka_session_new ();
+  g_signal_connect_object (self->session, "changed", G_CALLBACK (update_buttons), self, G_CONNECT_SWAPPED);
+  update_buttons (self);
+}
+
+static void
+mocka_session_bar_dispose (GObject *object)
+{
+  MockaSessionBar *self = MOCKA_SESSION_BAR (object);
+
+  g_clear_object (&self->session);
+
+  G_OBJECT_CLASS (mocka_session_bar_parent_class)->dispose (object);
+}
+
+static void
+mocka_session_bar_class_init (MockaSessionBarClass *klass)
+{
+  G_OBJECT_CLASS (klass)->dispose = mocka_session_bar_dispose;
+}
+
+GtkWidget *
+mocka_session_bar_new (void)
+{
+  return g_object_new (MOCKA_TYPE_SESSION_BAR, NULL);
 }

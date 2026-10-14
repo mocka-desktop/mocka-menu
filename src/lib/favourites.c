@@ -13,6 +13,7 @@
 
 #include "config.h"
 
+#include "app-item.h"
 #include "favourites.h"
 
 #define FAVOURITES_KEY "favourite-apps"
@@ -289,4 +290,178 @@ mocka_favourites_move (MockaFavourites *self, const gchar *id, gint position)
 
   g_ptr_array_insert (ids, (gint)MIN (target, ids->len), g_strdup (id));
   write_ids (self, ids);
+}
+
+/* The column, SPEC section 8. */
+
+struct _MockaFavouritesColumn
+{
+  GtkScrolledWindow parent_instance;
+
+  MockaFavourites *favourites; /* not owned */
+  GtkWidget *list;
+  gboolean pending; /* a rebuild held back until a drag ends */
+};
+
+G_DEFINE_TYPE (MockaFavouritesColumn, mocka_favourites_column, GTK_TYPE_SCROLLED_WINDOW)
+
+enum
+{
+  COLUMN_SIGNAL_APP_ACTIVATED,
+  N_COLUMN_SIGNALS
+};
+
+static guint column_signals[N_COLUMN_SIGNALS];
+
+static void
+destroy_row (GtkWidget *widget, gpointer user_data)
+{
+  gtk_widget_destroy (widget);
+}
+
+static void
+rebuild (MockaFavouritesColumn *self)
+{
+  GPtrArray *apps = mocka_favourites_get_apps (self->favourites);
+
+  self->pending = FALSE;
+  gtk_container_foreach (GTK_CONTAINER (self->list), destroy_row, NULL);
+
+  for (guint i = 0; i < apps->len; i++)
+    {
+      gtk_container_add (GTK_CONTAINER (self->list),
+                         mocka_app_item_new_icon (g_ptr_array_index (apps, i), self->favourites));
+    }
+
+  gtk_widget_show_all (self->list);
+}
+
+/*
+ * A drop on the column changes the favourites while the drag is still
+ * running, and rebuilding now would destroy the row being dragged. GTK then
+ * never emits drag-end for it, so the menu would never take back the grab the
+ * drag broke. The rebuild waits for the drag to finish.
+ */
+static void
+on_favourites_changed (MockaFavouritesColumn *self)
+{
+  if (mocka_app_drag_is_running ())
+    {
+      self->pending = TRUE;
+      return;
+    }
+
+  rebuild (self);
+}
+
+static void
+on_drag_finished (MockaFavouritesColumn *self)
+{
+  if (self->pending)
+    {
+      rebuild (self);
+    }
+}
+
+/* Past the middle of a row means after it, so a drop at the bottom appends. */
+static gint
+drop_position (MockaFavouritesColumn *self, gint y)
+{
+  GtkListBoxRow *row = gtk_list_box_get_row_at_y (GTK_LIST_BOX (self->list), y);
+  GtkAllocation alloc;
+
+  if (row == NULL)
+    {
+      return -1;
+    }
+
+  gtk_widget_get_allocation (GTK_WIDGET (row), &alloc);
+
+  return gtk_list_box_row_get_index (row) + (y > alloc.y + alloc.height / 2 ? 1 : 0);
+}
+
+// NOLINTBEGIN(bugprone-easily-swappable-parameters) the drag-data-received signal fixes this signature
+static void
+on_drop (GtkWidget *widget, GdkDragContext *context, gint x, gint y, GtkSelectionData *selection, guint info,
+         guint time, MockaFavouritesColumn *self)
+{
+  gchar *id = mocka_app_item_id_from_drop (selection);
+  gint position;
+
+  if (id == NULL)
+    {
+      gtk_drag_finish (context, FALSE, FALSE, time);
+      return;
+    }
+
+  position = drop_position (self, y);
+
+  /* Already a favourite, so this is a reordering (SPEC section 8). */
+  if (mocka_favourites_contains (self->favourites, id))
+    {
+      mocka_favourites_move (self->favourites, id, position);
+    }
+  else
+    {
+      mocka_favourites_add (self->favourites, id, position);
+    }
+
+  g_free (id);
+  gtk_drag_finish (context, TRUE, FALSE, time);
+}
+// NOLINTEND(bugprone-easily-swappable-parameters)
+
+static void
+on_row_activated (GtkListBox *list, GtkListBoxRow *row, MockaFavouritesColumn *self)
+{
+  MockaMenuApp *app = mocka_app_item_get_app (GTK_WIDGET (row));
+
+  if (app != NULL)
+    {
+      g_signal_emit (self, column_signals[COLUMN_SIGNAL_APP_ACTIVATED], 0, app);
+    }
+}
+
+static void
+mocka_favourites_column_init (MockaFavouritesColumn *self)
+{
+  const GtkTargetEntry *targets;
+  guint n_targets;
+
+  self->list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->list), GTK_SELECTION_NONE);
+  gtk_container_add (GTK_CONTAINER (self), self->list);
+
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_propagate_natural_width (GTK_SCROLLED_WINDOW (self), TRUE);
+
+  targets = mocka_app_item_drop_targets (&n_targets);
+  gtk_drag_dest_set (self->list, GTK_DEST_DEFAULT_ALL, targets, (gint)n_targets, mocka_app_item_drag_actions ());
+  g_signal_connect (self->list, "drag-data-received", G_CALLBACK (on_drop), self);
+  g_signal_connect (self->list, "row-activated", G_CALLBACK (on_row_activated), self);
+}
+
+static void
+mocka_favourites_column_class_init (MockaFavouritesColumnClass *klass)
+{
+  column_signals[COLUMN_SIGNAL_APP_ACTIVATED]
+      = g_signal_new ("app-activated", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE,
+                      1, MOCKA_TYPE_MENU_APP);
+}
+
+GtkWidget *
+mocka_favourites_column_new (MockaFavourites *favourites)
+{
+  MockaFavouritesColumn *self;
+
+  g_return_val_if_fail (MOCKA_IS_FAVOURITES (favourites), NULL);
+
+  self = g_object_new (MOCKA_TYPE_FAVOURITES_COLUMN, NULL);
+  self->favourites = favourites;
+
+  g_signal_connect_object (favourites, "changed", G_CALLBACK (on_favourites_changed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (mocka_app_drag_get (), "finished", G_CALLBACK (on_drag_finished), self, G_CONNECT_SWAPPED);
+  rebuild (self);
+
+  return GTK_WIDGET (self);
 }

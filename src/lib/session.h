@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <gio/gio.h>
+#include <gtk/gtk.h>
 
 G_BEGIN_DECLS
 
@@ -36,5 +36,15 @@ gboolean mocka_session_can (MockaSession *self, MockaSessionAction action);
 
 /* Asynchronous and unwaited: the window closes without the call finishing. */
 void mocka_session_run (MockaSession *self, MockaSessionAction action);
+
+/*
+ * The buttons both layouts show at the bottom of the favourites column. Each
+ * one closes the menu window and then makes its call. The box hides itself
+ * when no action is available.
+ */
+#define MOCKA_TYPE_SESSION_BAR (mocka_session_bar_get_type ())
+G_DECLARE_FINAL_TYPE (MockaSessionBar, mocka_session_bar, MOCKA, SESSION_BAR, GtkBox)
+
+GtkWidget *mocka_session_bar_new (void);
 
 G_END_DECLS
