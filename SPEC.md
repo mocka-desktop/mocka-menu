@@ -1,6 +1,6 @@
 # Mocka Menu Specification
 
-Status: draft 5
+Status: draft 6
 Component: `mocka-menu`
 License: BSD-3-Clause
 
@@ -182,7 +182,11 @@ The search entry is centered at the top of the screen (section 9.3).
 
 ### Grid
 
-- The number of columns follows the available width.
+- Large tiles: the icon with the name below it.
+- The grid is centered in the window and holds a fixed number of columns, so
+  it reads as a block in the middle of the screen rather than a band stretched
+  across a wide monitor.
+- The number of columns drops when the window is too narrow for all of them.
 - The grid scrolls vertically when it does not fit.
 - While search text is present, the grid shows search results in ranking
   order (section 9.2).
