@@ -1,6 +1,6 @@
 # Mocka Menu Specification
 
-Status: draft 7
+Status: draft 9
 Component: `mocka-menu`
 License: BSD-3-Clause
 
@@ -127,7 +127,7 @@ From left to right:
 1. **Favourites column** (section 8), with the session controls at its bottom
    (section 10).
 2. **Category list**: "All" first, then the categories of the menu tree in
-   menu order, ending with the Settings item (see below).
+   menu order.
 3. **App list**: one row per app, with icon and name. Hovering shows the
    app's comment as a tooltip.
 
@@ -145,16 +145,9 @@ search position setting (section 9.3).
 
 ### Settings shortcut
 
-After the categories, separated from them, the category list ends with a
-**Settings** item. It is not a category: clicking it launches the desktop's
-settings application (`matecc.desktop`, later Mocka Settings). It shows a
-settings icon from the theme and the entry's comment as its tooltip, and is
-hidden when that entry is not installed.
-
-The settings application stays listed in "All" and in search results, like
-any other app, so typing its name still finds it.
-
-Both layouts share this, since they share the category list.
+The shortcut to the desktop's settings application is not a category and does
+not sit in the category list. It is the first button of the session controls,
+above Lock (section 10).
 
 ## 7. Launcher layout
 
@@ -169,16 +162,15 @@ Both layouts share this, since they share the category list.
 
 ### Structure
 
-From left to right:
-
-1. **Favourites column** (section 8), with the session controls at its bottom
-   (section 10).
-2. **Category list**, the same as in Classic, with "All" selected by default.
-3. **App grid**: large icons with the name below. Long names wrap to two
-   lines, then end with an ellipsis. Hovering shows the app's comment as a
-   tooltip.
-
-The search entry is centered at the top of the screen (section 9.3).
+1. **Favourites column** (section 8) down the far left, the full height of the
+   screen, with the session controls at its bottom (section 10).
+2. The rest of the screen, from top to bottom:
+   - the search entry, centered (section 9.3);
+   - the **category list**, the same categories as in Classic but laid out in
+     a single row beneath the search, with "All" selected by default;
+   - the **app grid**: large icons with the name below. Long names wrap to two
+     lines, then end with an ellipsis. Hovering shows the app's comment as a
+     tooltip.
 
 ### Grid
 
@@ -291,6 +283,7 @@ At the bottom of the favourites column, in both layouts, from top to bottom:
 
 | Button | Action |
 |---|---|
+| Settings | Launch the desktop's settings application (`matecc.desktop`, later Mocka Settings) |
 | Lock | Lock the screen through the screensaver (`org.mate.ScreenSaver.Lock`) |
 | Switch User | Switch to the display manager's greeter (`org.freedesktop.DisplayManager.Seat.SwitchToGreeter` on the seat in `XDG_SEAT_PATH`) |
 | Log Out | Ask the session manager to log out, with its confirmation dialog (`org.gnome.SessionManager.Logout`, normal mode) |
@@ -303,7 +296,10 @@ At the bottom of the favourites column, in both layouts, from top to bottom:
   clicked, without waiting for the call to finish.
 - A button whose service is not available is hidden. For example, Switch User
   is hidden when there is no display manager seat.
-- Each button shows its name as a tooltip.
+- Settings is a launch, not a session action, and is hidden when its desktop
+  entry is not installed. The settings application stays listed in "All" and
+  in search results, like any other app, so typing its name still finds it.
+- Every button is its icon alone, with its name as a tooltip.
 
 ## 11. Menus
 
@@ -501,8 +497,9 @@ logind, or Python.
   `mate-terminal.desktop`, and `matecc.desktop`, the same apps as Mocka
   Dock's default. Distributions change it with a GSettings override.
 - `layout` defaults to `classic`.
-- The category list ends with a Settings item that launches the desktop's
-  settings application. The categories themselves stay in menu order.
+- The Settings shortcut is the first of the session controls, not the last
+  item of the category list, so the category list holds nothing but
+  categories and every icon-only button sits together in one column.
 - The Launcher grid is paged, with dots and side arrows, rather than scrolled.
   A full-screen grid of large tiles reads as pages, not as a long list, and
   the apps stay in one place on a page instead of moving under a scrollbar.
