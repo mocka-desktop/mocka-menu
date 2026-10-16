@@ -113,15 +113,15 @@ grabs and marco's bindings keep working.
 
 ## M4: Launcher layout
 
-- [ ] Full-monitor window on the monitor of the panel button
+- [x] Full-monitor window on the monitor of the panel button
 - [ ] Transparent background with a compositor, solid without one
-- [ ] Favourites column, category list, and app grid with wrapped names
-- [ ] Search at the top of the screen for `top` and `bottom`
+- [x] Favourites column on the far left, categories in a row under the search, and app grid with wrapped names
+- [x] Search at the top of the screen for `top` and `bottom`
 - [ ] Grid keyboard navigation by row and column
 - [ ] Clicking empty background closes
 - [ ] `layout` setting, switching applied while the menu is closed
 - [ ] Manual test with the compositor on and off
-- [ ] Decide vertical scrolling or paging (SPEC section 23)
+- [x] Decide vertical scrolling or paging (SPEC section 23). Paged, with dots and side arrows
 
 ## M5: Live updates, panel search, preferences (first alpha)
 
