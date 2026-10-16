@@ -51,4 +51,7 @@ G_DECLARE_FINAL_TYPE (MockaFavouritesColumn, mocka_favourites_column, MOCKA, FAV
 /* The favourites are not owned and must outlive the column. */
 GtkWidget *mocka_favourites_column_new (MockaFavourites *favourites);
 
+/* Bigger in the Launcher, where the icons sit beside large tiles. */
+void mocka_favourites_column_set_icon_size (MockaFavouritesColumn *self, gint pixel_size);
+
 G_END_DECLS

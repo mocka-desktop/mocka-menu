@@ -14,8 +14,10 @@
 
 #define ROW_ICON_SIZE 24
 #define COLUMN_ICON_SIZE 32
-#define TILE_ICON_SIZE 48
-#define TILE_WIDTH 108
+#define TILE_ICON_SIZE 64
+#define TILE_WIDTH 160
+/* The icon, two lines of name, and the padding around them. */
+#define TILE_HEIGHT 136
 #define ROW_SPACING 8
 #define ROW_PADDING 4
 
@@ -155,6 +157,14 @@ MockaMenuApp *
 mocka_app_item_get_app (GtkWidget *widget)
 {
   return widget != NULL ? g_object_get_data (G_OBJECT (widget), "app") : NULL;
+}
+
+GtkRequisition
+mocka_app_item_tile_size (void)
+{
+  GtkRequisition size = { TILE_WIDTH, TILE_HEIGHT };
+
+  return size;
 }
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters) the drag-data-get signal fixes this signature
@@ -333,10 +343,10 @@ mocka_app_item_new_row (MockaMenuApp *app, MockaFavourites *favourites)
 }
 
 GtkWidget *
-mocka_app_item_new_icon (MockaMenuApp *app, MockaFavourites *favourites)
+mocka_app_item_new_icon (MockaMenuApp *app, MockaFavourites *favourites, gint pixel_size)
 {
   GtkWidget *row = gtk_list_box_row_new ();
-  GtkWidget *image = app_image (app, COLUMN_ICON_SIZE);
+  GtkWidget *image = app_image (app, pixel_size > 0 ? pixel_size : COLUMN_ICON_SIZE);
 
   gtk_widget_set_margin_top (image, ROW_PADDING);
   gtk_widget_set_margin_bottom (image, ROW_PADDING);
@@ -364,12 +374,12 @@ mocka_app_item_new_tile (MockaMenuApp *app, MockaFavourites *favourites)
   gtk_label_set_lines (GTK_LABEL (label), 2);
   gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
   gtk_label_set_justify (GTK_LABEL (label), GTK_JUSTIFY_CENTER);
-  gtk_label_set_max_width_chars (GTK_LABEL (label), 14);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 16);
 
   gtk_box_pack_start (GTK_BOX (box), app_image (app, TILE_ICON_SIZE), FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (box), label, FALSE, FALSE, 0);
   gtk_container_set_border_width (GTK_CONTAINER (box), ROW_SPACING);
-  gtk_widget_set_size_request (tile, TILE_WIDTH, -1);
+  gtk_widget_set_size_request (tile, TILE_WIDTH, TILE_HEIGHT);
 
   if (comment != NULL && *comment != '\0')
     {

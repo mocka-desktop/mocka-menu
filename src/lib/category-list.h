@@ -12,18 +12,14 @@
 
 G_BEGIN_DECLS
 
-/*
- * The category list both layouts show (SPEC section 6): "All" first, then the
- * menu tree's categories in order, with the Settings shortcut below them.
- *
- * "category-selected" carries the apps to show, "app-activated" the settings
- * application when its shortcut is clicked.
- */
+/* The category list both layouts show (SPEC section 6): "All" first, then the
+ * menu tree's categories in order. "category-selected" says to show its apps. */
 #define MOCKA_TYPE_CATEGORY_LIST (mocka_category_list_get_type ())
 G_DECLARE_FINAL_TYPE (MockaCategoryList, mocka_category_list, MOCKA, CATEGORY_LIST, GtkBox)
 
-/* The menu data is not owned and must outlive the list. */
-GtkWidget *mocka_category_list_new (MockaMenuData *data);
+/* The menu data is not owned and must outlive the list. Horizontal lays the
+ * categories out in one row, which is what the Launcher wants. */
+GtkWidget *mocka_category_list_new (MockaMenuData *data, GtkOrientation orientation);
 
 /* Reads the menu tree again, then selects "All". */
 void mocka_category_list_rebuild (MockaCategoryList *self);

@@ -21,13 +21,16 @@ G_BEGIN_DECLS
 
 /* Icon and name, for the Classic app list. */
 GtkWidget *mocka_app_item_new_row (MockaMenuApp *app, MockaFavourites *favourites);
-/* Icon alone, for the favourites column. */
-GtkWidget *mocka_app_item_new_icon (MockaMenuApp *app, MockaFavourites *favourites);
+/* Icon alone, for the favourites column, at the size the layout wants. */
+GtkWidget *mocka_app_item_new_icon (MockaMenuApp *app, MockaFavourites *favourites, gint pixel_size);
 /* Large icon with the name below, for the Launcher grid. */
 GtkWidget *mocka_app_item_new_tile (MockaMenuApp *app, MockaFavourites *favourites);
 
 /* The app a widget made here stands for, or NULL for anything else. */
 MockaMenuApp *mocka_app_item_get_app (GtkWidget *widget);
+
+/* The room a tile asks for, so a grid can work out how many of them fit. */
+GtkRequisition mocka_app_item_tile_size (void);
 
 /* What the drag carries, so a column can accept a drop from a list. */
 #define MOCKA_APP_ITEM_TARGET "application/x-mocka-menu-app"

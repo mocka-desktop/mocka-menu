@@ -16,6 +16,7 @@
 #include "favourites.h"
 #include "hotkey.h"
 #include "launch.h"
+#include "launcher-view.h"
 #include "menu-data.h"
 #include "menu-window.h"
 #include "mocka-menu.h"
@@ -220,13 +221,23 @@ on_hotkey_activated (MockaMenuApplet *self)
 static void
 update_rollover (MockaMenuApplet *self)
 {
+  gboolean rollover;
+
   if (self->view == NULL)
     {
       return;
     }
 
-  mocka_classic_view_set_rollover (MOCKA_CLASSIC_VIEW (self->view),
-                                   g_settings_get_boolean (self->settings, "rollover"));
+  rollover = g_settings_get_boolean (self->settings, "rollover");
+
+  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
+    {
+      mocka_launcher_view_set_rollover (MOCKA_LAUNCHER_VIEW (self->view), rollover);
+    }
+  else
+    {
+      mocka_classic_view_set_rollover (MOCKA_CLASSIC_VIEW (self->view), rollover);
+    }
 }
 
 /*
@@ -244,6 +255,12 @@ update_search_position (MockaMenuApplet *self)
       return;
     }
 
+  /* The Launcher puts it at the top whatever the setting says. */
+  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
+    {
+      return;
+    }
+
   value = g_settings_get_string (self->settings, "search-position");
   mocka_classic_view_set_search_position (MOCKA_CLASSIC_VIEW (self->view), g_strcmp0 (value, "bottom") == 0
                                                                                ? MOCKA_CLASSIC_SEARCH_BOTTOM
@@ -255,7 +272,16 @@ update_search_position (MockaMenuApplet *self)
 static void
 on_menu_reset (MockaMenuApplet *self)
 {
-  if (self->view != NULL)
+  if (self->view == NULL)
+    {
+      return;
+    }
+
+  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
+    {
+      mocka_launcher_view_reset (MOCKA_LAUNCHER_VIEW (self->view));
+    }
+  else
     {
       mocka_classic_view_reset (MOCKA_CLASSIC_VIEW (self->view));
     }
@@ -268,7 +294,23 @@ on_menu_reset (MockaMenuApplet *self)
 static gboolean
 on_menu_escape (MockaMenuApplet *self)
 {
-  if (self->view == NULL || !mocka_classic_view_is_searching (MOCKA_CLASSIC_VIEW (self->view)))
+  if (self->view == NULL)
+    {
+      return FALSE;
+    }
+
+  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
+    {
+      if (!mocka_launcher_view_is_searching (MOCKA_LAUNCHER_VIEW (self->view)))
+        {
+          return FALSE;
+        }
+
+      mocka_launcher_view_clear_search (MOCKA_LAUNCHER_VIEW (self->view));
+      return TRUE;
+    }
+
+  if (!mocka_classic_view_is_searching (MOCKA_CLASSIC_VIEW (self->view)))
     {
       return FALSE;
     }
@@ -285,11 +327,62 @@ on_app_activated (MockaMenuApplet *self, MockaMenuApp *app)
   mocka_launch_app (mocka_menu_app_get_app_info (app), GTK_WIDGET (self));
 }
 
+static gboolean
+launcher_wanted (MockaMenuApplet *self)
+{
+  gchar *layout = g_settings_get_string (self->settings, "layout");
+  gboolean launcher = g_strcmp0 (layout, "launcher") == 0;
+
+  g_free (layout);
+
+  return launcher;
+}
+
+/* The layout the setting asks for, packed into the window (SPEC section 15). */
+static void
+build_view (MockaMenuApplet *self)
+{
+  GtkWidget *content = mocka_menu_window_get_content_area (MOCKA_MENU_WINDOW (self->menu_window));
+  gboolean launcher = launcher_wanted (self);
+
+  mocka_menu_window_set_layout (MOCKA_MENU_WINDOW (self->menu_window),
+                                launcher ? MOCKA_MENU_WINDOW_LAUNCHER : MOCKA_MENU_WINDOW_CLASSIC);
+
+  self->view = launcher ? mocka_launcher_view_new (self->data, self->favourites)
+                        : mocka_classic_view_new (self->data, self->favourites);
+  g_signal_connect_swapped (self->view, "app-activated", G_CALLBACK (on_app_activated), self);
+
+  gtk_box_pack_start (GTK_BOX (content), self->view, TRUE, TRUE, 0);
+  gtk_widget_show_all (self->view);
+
+  update_rollover (self);
+  update_search_position (self);
+}
+
+/*
+ * A layout change takes effect while the menu is closed (SPEC section 15), so
+ * an open menu is closed first and the old layout destroyed with it.
+ */
+static void
+update_layout (MockaMenuApplet *self)
+{
+  if (self->view == NULL || MOCKA_IS_LAUNCHER_VIEW (self->view) == launcher_wanted (self))
+    {
+      return;
+    }
+
+  mocka_menu_window_close (MOCKA_MENU_WINDOW (self->menu_window));
+
+  gtk_widget_destroy (self->view);
+  self->view = NULL;
+
+  build_view (self);
+}
+
 /* Reads the menu tree once at startup (SPEC section 18). */
 static void
 build_menu_contents (MockaMenuApplet *self)
 {
-  GtkWidget *content;
   GError *error = NULL;
 
   self->data = mocka_menu_data_new ();
@@ -301,17 +394,10 @@ build_menu_contents (MockaMenuApplet *self)
     }
 
   self->favourites = mocka_favourites_new (self->data, self->settings);
-  self->view = mocka_classic_view_new (self->data, self->favourites);
-  g_signal_connect_swapped (self->view, "app-activated", G_CALLBACK (on_app_activated), self);
+  build_view (self);
 
-  content = mocka_menu_window_get_content_area (MOCKA_MENU_WINDOW (self->menu_window));
-  gtk_box_pack_start (GTK_BOX (content), self->view, TRUE, TRUE, 0);
-  gtk_widget_show_all (self->view);
-
-  update_rollover (self);
+  g_signal_connect_swapped (self->settings, "changed::layout", G_CALLBACK (update_layout), self);
   g_signal_connect_swapped (self->settings, "changed::rollover", G_CALLBACK (update_rollover), self);
-
-  update_search_position (self);
   g_signal_connect_swapped (self->settings, "changed::search-position", G_CALLBACK (update_search_position), self);
 
   /* Every applet watches the key for now; one owner comes next. */

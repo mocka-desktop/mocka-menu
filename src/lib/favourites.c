@@ -300,6 +300,7 @@ struct _MockaFavouritesColumn
 
   MockaFavourites *favourites; /* not owned */
   GtkWidget *list;
+  gint icon_size;
   gboolean pending; /* a rebuild held back until a drag ends */
 };
 
@@ -330,7 +331,7 @@ rebuild (MockaFavouritesColumn *self)
   for (guint i = 0; i < apps->len; i++)
     {
       gtk_container_add (GTK_CONTAINER (self->list),
-                         mocka_app_item_new_icon (g_ptr_array_index (apps, i), self->favourites));
+                         mocka_app_item_new_icon (g_ptr_array_index (apps, i), self->favourites, self->icon_size));
     }
 
   gtk_widget_show_all (self->list);
@@ -447,6 +448,18 @@ mocka_favourites_column_class_init (MockaFavouritesColumnClass *klass)
   column_signals[COLUMN_SIGNAL_APP_ACTIVATED]
       = g_signal_new ("app-activated", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE,
                       1, MOCKA_TYPE_MENU_APP);
+}
+
+void
+mocka_favourites_column_set_icon_size (MockaFavouritesColumn *self, gint pixel_size)
+{
+  g_return_if_fail (MOCKA_IS_FAVOURITES_COLUMN (self));
+
+  if (pixel_size != self->icon_size)
+    {
+      self->icon_size = pixel_size;
+      rebuild (self);
+    }
 }
 
 GtkWidget *

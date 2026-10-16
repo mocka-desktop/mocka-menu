@@ -592,10 +592,13 @@ GtkWidget *
 mocka_classic_view_new (MockaMenuData *data, MockaFavourites *favourites)
 {
   MockaClassicView *self = g_object_new (MOCKA_TYPE_CLASSIC_VIEW, NULL);
-  GtkWidget *session = mocka_session_bar_new ();
+  GtkWidget *session = mocka_session_bar_new (data);
 
   self->data = data;
   self->favourites = favourites;
+
+  /* The Settings shortcut lives there now (SPEC section 10). */
+  g_signal_connect_swapped (session, "app-activated", G_CALLBACK (on_child_app_activated), self);
 
   /* Favourites above, session controls at the bottom (SPEC sections 8 and 10). */
   self->column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
@@ -611,9 +614,8 @@ mocka_classic_view_new (MockaMenuData *data, MockaFavourites *favourites)
     }
   gtk_box_pack_end (GTK_BOX (self->column), session, FALSE, FALSE, 0);
 
-  self->categories = mocka_category_list_new (data);
+  self->categories = mocka_category_list_new (data, GTK_ORIENTATION_VERTICAL);
   g_signal_connect (self->categories, "category-selected", G_CALLBACK (on_category_selected), self);
-  g_signal_connect_swapped (self->categories, "app-activated", G_CALLBACK (on_child_app_activated), self);
 
   gtk_box_pack_start (GTK_BOX (self->columns), self->column, FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (self->columns), gtk_separator_new (GTK_ORIENTATION_VERTICAL), FALSE, FALSE, 0);
