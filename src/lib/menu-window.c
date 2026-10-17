@@ -304,6 +304,13 @@ mocka_menu_window_set_layout (MockaMenuWindow *self, MockaMenuWindowLayout layou
   visual = gdk_screen_get_rgba_visual (screen);
   if (visual != NULL && gdk_screen_is_composited (screen))
     {
+      /* A visual only takes on the next realize, and the window has already
+       * been realized if Classic opened first. */
+      if (gtk_widget_get_realized (GTK_WIDGET (self)))
+        {
+          gtk_widget_unrealize (GTK_WIDGET (self));
+        }
+
       gtk_widget_set_visual (GTK_WIDGET (self), visual);
     }
 

@@ -26,6 +26,8 @@ struct _MockaAppDrag
   GObject parent_instance;
 
   MockaMenuWindow *window; /* weak, the window the running drag started in */
+  GtkWidget *source;       /* what is being dragged, while it lasts */
+  gulong source_destroy;
 };
 
 G_DEFINE_TYPE (MockaAppDrag, mocka_app_drag, G_TYPE_OBJECT)
@@ -204,6 +206,44 @@ on_drag_data_get (GtkWidget *events, GdkDragContext *context, GtkSelectionData *
 }
 // NOLINTEND(bugprone-easily-swappable-parameters)
 
+static void on_source_destroyed (GtkWidget *source, gpointer user_data);
+
+static void
+finish_drag (MockaAppDrag *drag)
+{
+  MockaMenuWindow *window = drag->window;
+
+  if (drag->source != NULL)
+    {
+      g_signal_handler_disconnect (drag->source, drag->source_destroy);
+      drag->source = NULL;
+      drag->source_destroy = 0;
+    }
+
+  if (window == NULL)
+    {
+      return;
+    }
+
+  g_object_remove_weak_pointer (G_OBJECT (window), (gpointer *)&drag->window);
+  drag->window = NULL;
+  mocka_menu_window_end_grab_handover (window);
+
+  g_signal_emit (drag, signals[SIGNAL_FINISHED], 0);
+}
+
+/*
+ * A rebuild can destroy what is being dragged, and GTK emits no drag-end for
+ * a destroyed source. Without this the drag would look like it never ended:
+ * the window would never take its grab back and every later drag would be
+ * refused.
+ */
+static void
+on_source_destroyed (GtkWidget *source, gpointer user_data)
+{
+  finish_drag (mocka_app_drag_get ());
+}
+
 static void
 on_drag_begin (GtkWidget *events, GdkDragContext *context, gpointer user_data)
 {
@@ -226,25 +266,15 @@ on_drag_begin (GtkWidget *events, GdkDragContext *context, gpointer user_data)
    * name its own window, so the window is remembered here. */
   drag->window = window;
   g_object_add_weak_pointer (G_OBJECT (window), (gpointer *)&drag->window);
+  drag->source = events;
+  drag->source_destroy = g_signal_connect (events, "destroy", G_CALLBACK (on_source_destroyed), NULL);
   mocka_menu_window_begin_grab_handover (window);
 }
 
 static void
 on_drag_end (GtkWidget *events, GdkDragContext *context, gpointer user_data)
 {
-  MockaAppDrag *drag = mocka_app_drag_get ();
-  MockaMenuWindow *window = drag->window;
-
-  if (window == NULL)
-    {
-      return;
-    }
-
-  g_object_remove_weak_pointer (G_OBJECT (window), (gpointer *)&drag->window);
-  drag->window = NULL;
-  mocka_menu_window_end_grab_handover (window);
-
-  g_signal_emit (drag, signals[SIGNAL_FINISHED], 0);
+  finish_drag (mocka_app_drag_get ());
 }
 
 static gboolean

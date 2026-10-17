@@ -26,8 +26,6 @@ GtkWidget *mocka_launcher_view_new (MockaMenuData *data, MockaFavourites *favour
 void mocka_launcher_view_reset (MockaLauncherView *self);
 void mocka_launcher_view_rebuild (MockaLauncherView *self);
 
-void mocka_launcher_view_set_rollover (MockaLauncherView *self, gboolean rollover);
-
 gboolean mocka_launcher_view_is_searching (MockaLauncherView *self);
 void mocka_launcher_view_clear_search (MockaLauncherView *self);
 

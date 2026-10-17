@@ -221,23 +221,14 @@ on_hotkey_activated (MockaMenuApplet *self)
 static void
 update_rollover (MockaMenuApplet *self)
 {
-  gboolean rollover;
-
-  if (self->view == NULL)
+  /* Classic only, as the setting says (SPEC section 15). */
+  if (self->view == NULL || MOCKA_IS_LAUNCHER_VIEW (self->view))
     {
       return;
     }
 
-  rollover = g_settings_get_boolean (self->settings, "rollover");
-
-  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
-    {
-      mocka_launcher_view_set_rollover (MOCKA_LAUNCHER_VIEW (self->view), rollover);
-    }
-  else
-    {
-      mocka_classic_view_set_rollover (MOCKA_CLASSIC_VIEW (self->view), rollover);
-    }
+  mocka_classic_view_set_rollover (MOCKA_CLASSIC_VIEW (self->view),
+                                   g_settings_get_boolean (self->settings, "rollover"));
 }
 
 /*
@@ -396,7 +387,7 @@ build_menu_contents (MockaMenuApplet *self)
   self->favourites = mocka_favourites_new (self->data, self->settings);
   build_view (self);
 
-  g_signal_connect_swapped (self->settings, "changed::layout", G_CALLBACK (update_layout), self);
+  g_signal_connect_object (self->settings, "changed::layout", G_CALLBACK (update_layout), self, G_CONNECT_SWAPPED);
   g_signal_connect_swapped (self->settings, "changed::rollover", G_CALLBACK (update_rollover), self);
   g_signal_connect_swapped (self->settings, "changed::search-position", G_CALLBACK (update_search_position), self);
 

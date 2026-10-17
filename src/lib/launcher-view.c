@@ -38,6 +38,9 @@
 
 #define DOT_SIZE 10
 
+/* How far a smooth scroll has to travel before it is worth a page. */
+#define SCROLL_THRESHOLD 1.0
+
 /* Beside 64px tiles, the Classic size looks undersized. */
 #define COLUMN_ICON_SIZE 48
 
@@ -62,6 +65,7 @@ struct _MockaLauncherView
   guint page_count;
   guint page;
 
+  gdouble scrolled;
   gboolean search_pending;
   gulong toplevel_key;
 };
@@ -425,19 +429,43 @@ on_next_clicked (GtkWidget *button, MockaLauncherView *self)
 static gboolean
 on_scroll (GtkWidget *widget, GdkEventScroll *event, MockaLauncherView *self)
 {
-  if (event->direction == GDK_SCROLL_DOWN || event->direction == GDK_SCROLL_RIGHT)
+  gboolean forward;
+
+  /* A touchpad, and most mice nowadays, send deltas rather than directions. */
+  if (event->direction == GDK_SCROLL_SMOOTH)
     {
-      set_page (self, self->page + 1);
-      return GDK_EVENT_STOP;
+      gdouble delta = ABS (event->delta_y) > ABS (event->delta_x) ? event->delta_y : event->delta_x;
+
+      self->scrolled += delta;
+      if (ABS (self->scrolled) < SCROLL_THRESHOLD)
+        {
+          return GDK_EVENT_STOP;
+        }
+
+      forward = self->scrolled > 0;
+      self->scrolled = 0;
+    }
+  else if (event->direction == GDK_SCROLL_DOWN || event->direction == GDK_SCROLL_RIGHT)
+    {
+      forward = TRUE;
+    }
+  else if (event->direction == GDK_SCROLL_UP || event->direction == GDK_SCROLL_LEFT)
+    {
+      forward = FALSE;
+    }
+  else
+    {
+      return GDK_EVENT_PROPAGATE;
     }
 
-  if ((event->direction == GDK_SCROLL_UP || event->direction == GDK_SCROLL_LEFT) && self->page > 0)
+  if (!forward && self->page == 0)
     {
-      set_page (self, self->page - 1);
-      return GDK_EVENT_STOP;
+      return GDK_EVENT_PROPAGATE;
     }
 
-  return GDK_EVENT_PROPAGATE;
+  set_page (self, forward ? self->page + 1 : self->page - 1);
+
+  return GDK_EVENT_STOP;
 }
 
 /* Enter launches the selected tile, or the first on the page. */
@@ -600,6 +628,16 @@ on_toplevel_key_press (GtkWidget *toplevel, GdkEventKey *event, MockaLauncherVie
       /* Into the grid, which takes the arrows from there. */
       focus_page (self, FALSE);
       return GDK_EVENT_STOP;
+    case GDK_KEY_Home:
+    case GDK_KEY_KP_Home:
+      set_page (self, 0);
+      focus_page (self, FALSE);
+      return GDK_EVENT_STOP;
+    case GDK_KEY_End:
+    case GDK_KEY_KP_End:
+      set_page (self, self->page_count > 0 ? self->page_count - 1 : 0);
+      focus_page (self, TRUE);
+      return GDK_EVENT_STOP;
     default:
       return GDK_EVENT_PROPAGATE;
     }
@@ -747,13 +785,6 @@ mocka_launcher_view_reset (MockaLauncherView *self)
   show_apps (self, mocka_menu_data_get_all_apps (self->data));
 }
 
-void
-mocka_launcher_view_set_rollover (MockaLauncherView *self, gboolean rollover)
-{
-  g_return_if_fail (MOCKA_IS_LAUNCHER_VIEW (self));
-  mocka_category_list_set_rollover (MOCKA_CATEGORY_LIST (self->categories), rollover);
-}
-
 gboolean
 mocka_launcher_view_is_searching (MockaLauncherView *self)
 {
@@ -813,7 +844,7 @@ mocka_launcher_view_init (MockaLauncherView *self)
   gtk_entry_set_width_chars (GTK_ENTRY (self->entry), SEARCH_WIDTH);
   gtk_widget_set_halign (self->entry, GTK_ALIGN_CENTER);
 
-  gtk_widget_add_events (GTK_WIDGET (self), GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
+  gtk_widget_add_events (GTK_WIDGET (self), GDK_BUTTON_PRESS_MASK | GDK_SCROLL_MASK | GDK_SMOOTH_SCROLL_MASK);
 
   g_signal_connect (self->entry, "search-changed", G_CALLBACK (on_search_changed), self);
   g_signal_connect (self, "key-press-event", G_CALLBACK (on_key_press), self);
