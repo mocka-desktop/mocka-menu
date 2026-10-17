@@ -8,6 +8,8 @@
 
 #include <glib/gi18n-lib.h>
 
+#include "app-item.h"
+#include "menu-window.h"
 #include "session.h"
 
 typedef struct
@@ -332,4 +334,185 @@ mocka_session_run (MockaSession *self, MockaSessionAction action)
   g_dbus_connection_call (bus_for (self, action), services[action].name, path_for (self, action),
                           services[action].interface, services[action].method, args, NULL, G_DBUS_CALL_FLAGS_NONE, -1,
                           self->cancellable, on_call_done, (gpointer)services[action].method);
+}
+
+/* The buttons, SPEC section 10. */
+
+#define SETTINGS_DESKTOP_ID "matecc.desktop"
+
+/*
+ * The symbolic name, because a theme draws plain preferences-desktop as a
+ * full colour application icon, out of place beside the session glyphs, and
+ * preferences-system as something else again.
+ */
+#define SETTINGS_ICON_NAME "preferences-desktop-symbolic"
+
+struct _MockaSessionBar
+{
+  GtkBox parent_instance;
+
+  MockaSession *session; /* owned */
+  MockaMenuData *data;   /* not owned */
+  GtkWidget *settings;
+  GtkWidget *buttons[MOCKA_SESSION_N_ACTIONS];
+};
+
+G_DEFINE_TYPE (MockaSessionBar, mocka_session_bar, GTK_TYPE_BOX)
+
+enum
+{
+  BAR_SIGNAL_APP_ACTIVATED,
+  N_BAR_SIGNALS
+};
+
+static guint bar_signals[N_BAR_SIGNALS];
+
+static void
+on_clicked (GtkWidget *button, MockaSessionBar *self)
+{
+  MockaSessionAction action = (MockaSessionAction)GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (button), "action"));
+  MockaMenuWindow *window = mocka_menu_window_of (button);
+
+  /* The window closes at once, without waiting for the call (SPEC section 10). */
+  if (window != NULL)
+    {
+      mocka_menu_window_close (window);
+    }
+
+  mocka_session_run (self->session, action);
+}
+
+/* The app the Settings shortcut opens, or NULL when it is not installed. */
+static MockaMenuApp *
+settings_app (MockaSessionBar *self)
+{
+  GPtrArray *all = self->data != NULL ? mocka_menu_data_get_all_apps (self->data) : NULL;
+
+  for (guint i = 0; all != NULL && i < all->len; i++)
+    {
+      MockaMenuApp *app = g_ptr_array_index (all, i);
+
+      if (g_strcmp0 (mocka_menu_app_get_id (app), SETTINGS_DESKTOP_ID) == 0)
+        {
+          return app;
+        }
+    }
+
+  return NULL;
+}
+
+static void
+on_settings_clicked (GtkWidget *button, MockaSessionBar *self)
+{
+  MockaMenuApp *app = settings_app (self);
+
+  if (app != NULL)
+    {
+      g_signal_emit (self, bar_signals[BAR_SIGNAL_APP_ACTIVATED], 0, app);
+    }
+}
+
+/* A service that is not there hides its button (SPEC section 10). */
+static void
+update_buttons (MockaSessionBar *self)
+{
+  MockaMenuApp *settings = settings_app (self);
+  gboolean any = settings != NULL;
+
+  gtk_widget_set_visible (self->settings, settings != NULL);
+  if (settings != NULL)
+    {
+      /* Resolved the way every other icon in the menu is, rather than left to
+       * GTK to miss. */
+      GIcon *wanted = g_themed_icon_new (SETTINGS_ICON_NAME);
+      GIcon *icon = mocka_icon_to_draw (wanted, "preferences-desktop");
+      GtkWidget *image = gtk_image_new_from_gicon (icon, GTK_ICON_SIZE_LARGE_TOOLBAR);
+
+      gtk_button_set_image (GTK_BUTTON (self->settings), image);
+      gtk_widget_show (image);
+      g_object_unref (icon);
+      g_object_unref (wanted);
+    }
+
+  for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
+    {
+      gboolean can = mocka_session_can (self->session, i);
+
+      gtk_widget_set_visible (self->buttons[i], can);
+      any = any || can;
+    }
+
+  gtk_widget_set_visible (GTK_WIDGET (self), any);
+}
+
+static GtkWidget *
+bar_button (MockaSessionBar *self, const gchar *icon_name, GCallback handler)
+{
+  GtkWidget *button = gtk_button_new_from_icon_name (icon_name, GTK_ICON_SIZE_LARGE_TOOLBAR);
+
+  gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
+  g_signal_connect (button, "clicked", handler, self);
+
+  /* A layout shows its whole tree at once, which would reveal a button whose
+   * service is missing. */
+  gtk_widget_set_no_show_all (button, TRUE);
+  gtk_widget_show (gtk_button_get_image (GTK_BUTTON (button)));
+  gtk_box_pack_start (GTK_BOX (self), button, FALSE, FALSE, 0);
+
+  return button;
+}
+
+static void
+mocka_session_bar_init (MockaSessionBar *self)
+{
+  gtk_orientable_set_orientation (GTK_ORIENTABLE (self), GTK_ORIENTATION_VERTICAL);
+
+  /* Above Lock (SPEC section 10). */
+  self->settings = bar_button (self, SETTINGS_ICON_NAME, G_CALLBACK (on_settings_clicked));
+  gtk_widget_set_tooltip_text (self->settings, _ ("Settings"));
+
+  for (guint i = 0; i < MOCKA_SESSION_N_ACTIONS; i++)
+    {
+      GtkWidget *button = bar_button (self, mocka_session_action_icon (i), G_CALLBACK (on_clicked));
+
+      gtk_widget_set_tooltip_text (button, mocka_session_action_name (i));
+      g_object_set_data (G_OBJECT (button), "action", GUINT_TO_POINTER (i));
+      self->buttons[i] = button;
+    }
+
+  gtk_widget_set_no_show_all (GTK_WIDGET (self), TRUE);
+
+  self->session = mocka_session_new ();
+  g_signal_connect_object (self->session, "changed", G_CALLBACK (update_buttons), self, G_CONNECT_SWAPPED);
+  update_buttons (self);
+}
+
+static void
+mocka_session_bar_dispose (GObject *object)
+{
+  MockaSessionBar *self = MOCKA_SESSION_BAR (object);
+
+  g_clear_object (&self->session);
+
+  G_OBJECT_CLASS (mocka_session_bar_parent_class)->dispose (object);
+}
+
+static void
+mocka_session_bar_class_init (MockaSessionBarClass *klass)
+{
+  G_OBJECT_CLASS (klass)->dispose = mocka_session_bar_dispose;
+
+  bar_signals[BAR_SIGNAL_APP_ACTIVATED] = g_signal_new ("app-activated", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+                                                        0, NULL, NULL, NULL, G_TYPE_NONE, 1, MOCKA_TYPE_MENU_APP);
+}
+
+GtkWidget *
+mocka_session_bar_new (MockaMenuData *data)
+{
+  MockaSessionBar *self = g_object_new (MOCKA_TYPE_SESSION_BAR, NULL);
+
+  self->data = data;
+  update_buttons (self);
+
+  return GTK_WIDGET (self);
 }

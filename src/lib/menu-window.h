@@ -25,6 +25,19 @@ GtkWidget *mocka_menu_window_new (void);
 /* Which screen edge the panel sits on, so the menu opens away from it. */
 void mocka_menu_window_set_panel_side (MockaMenuWindow *self, GtkPositionType side);
 
+/*
+ * Classic sits against the panel button, Launcher covers the monitor holding
+ * it (SPEC sections 6 and 7). Launcher also takes a transparent visual where
+ * the compositor allows one, and leaves the painting to the layout.
+ */
+typedef enum
+{
+  MOCKA_MENU_WINDOW_CLASSIC,
+  MOCKA_MENU_WINDOW_LAUNCHER
+} MockaMenuWindowLayout;
+
+void mocka_menu_window_set_layout (MockaMenuWindow *self, MockaMenuWindowLayout layout);
+
 /* Anchor is the panel button the menu belongs to. */
 void mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor);
 void mocka_menu_window_close (MockaMenuWindow *self);

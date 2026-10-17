@@ -8,6 +8,8 @@
 
 #include "menu-data.h"
 
+#include <gtk/gtk.h>
+
 G_BEGIN_DECLS
 
 /*
@@ -37,5 +39,19 @@ gboolean mocka_favourites_contains (MockaFavourites *self, const gchar *id);
 void mocka_favourites_add (MockaFavourites *self, const gchar *id, gint position);
 void mocka_favourites_remove (MockaFavourites *self, const gchar *id);
 void mocka_favourites_move (MockaFavourites *self, const gchar *id, gint position);
+
+/*
+ * The column both layouts show on the left (SPEC section 8): the favourites
+ * as icons, taking a drop to add or to reorder, and emitting "app-activated"
+ * when one is clicked.
+ */
+#define MOCKA_TYPE_FAVOURITES_COLUMN (mocka_favourites_column_get_type ())
+G_DECLARE_FINAL_TYPE (MockaFavouritesColumn, mocka_favourites_column, MOCKA, FAVOURITES_COLUMN, GtkScrolledWindow)
+
+/* The favourites are not owned and must outlive the column. */
+GtkWidget *mocka_favourites_column_new (MockaFavourites *favourites);
+
+/* Bigger in the Launcher, where the icons sit beside large tiles. */
+void mocka_favourites_column_set_icon_size (MockaFavouritesColumn *self, gint pixel_size);
 
 G_END_DECLS

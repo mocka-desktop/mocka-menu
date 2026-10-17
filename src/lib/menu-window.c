@@ -35,6 +35,7 @@ struct _MockaMenuWindow
   GdkSeat *held_seat; /* while open, the seat we grabbed */
   GtkWidget *anchor;  /* the panel button, not owned */
   GtkPositionType panel_side;
+  MockaMenuWindowLayout layout;
   gboolean open;
   guint handover;    /* drags and popup menus of ours holding the grab */
   guint regrab;      /* idle waiting to take the grab back */
@@ -278,6 +279,73 @@ mocka_menu_window_set_panel_side (MockaMenuWindow *self, GtkPositionType side)
   self->panel_side = side;
 }
 
+void
+mocka_menu_window_set_layout (MockaMenuWindow *self, MockaMenuWindowLayout layout)
+{
+  GdkScreen *screen;
+  GdkVisual *visual;
+
+  g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
+
+  self->layout = layout;
+
+  if (layout == MOCKA_MENU_WINDOW_CLASSIC)
+    {
+      gtk_widget_set_app_paintable (GTK_WIDGET (self), FALSE);
+      return;
+    }
+
+  /*
+   * An RGBA visual is what makes alpha mean anything, and the layout paints
+   * the background itself. Without a compositor the visual is missing and the
+   * same paint lands opaque (SPEC section 7).
+   */
+  screen = gtk_widget_get_screen (GTK_WIDGET (self));
+  visual = gdk_screen_get_rgba_visual (screen);
+  if (visual != NULL && gdk_screen_is_composited (screen))
+    {
+      /* A visual only takes on the next realize, and the window has already
+       * been realized if Classic opened first. */
+      if (gtk_widget_get_realized (GTK_WIDGET (self)))
+        {
+          gtk_widget_unrealize (GTK_WIDGET (self));
+        }
+
+      gtk_widget_set_visual (GTK_WIDGET (self), visual);
+    }
+
+  gtk_widget_set_app_paintable (GTK_WIDGET (self), TRUE);
+}
+
+/* The whole monitor holding the button, panels included (SPEC section 7). */
+static void
+place_over_monitor (MockaMenuWindow *self, GtkWidget *anchor)
+{
+  GdkRectangle anchor_rect;
+  GdkRectangle monitor_rect;
+  GdkDisplay *display = gtk_widget_get_display (anchor);
+  GdkMonitor *monitor = NULL;
+
+  if (widget_root_rect (anchor, &anchor_rect))
+    {
+      monitor = gdk_display_get_monitor_at_point (display, anchor_rect.x, anchor_rect.y);
+    }
+  if (monitor == NULL)
+    {
+      monitor = gdk_display_get_primary_monitor (display);
+    }
+  if (monitor == NULL)
+    {
+      return;
+    }
+
+  gdk_monitor_get_geometry (monitor, &monitor_rect);
+
+  gtk_widget_set_size_request (GTK_WIDGET (self), monitor_rect.width, monitor_rect.height);
+  gtk_window_resize (GTK_WINDOW (self), monitor_rect.width, monitor_rect.height);
+  gtk_window_move (GTK_WINDOW (self), monitor_rect.x, monitor_rect.y);
+}
+
 /* Next to the button, inside the monitor holding it (SPEC section 6). */
 static void
 place_near_anchor (MockaMenuWindow *self, GtkWidget *anchor)
@@ -341,7 +409,14 @@ mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor)
   g_signal_emit (self, signals[SIGNAL_RESET], 0);
 
   /* Placed before it is shown, so it never appears in the wrong spot. */
-  place_near_anchor (self, anchor);
+  if (self->layout == MOCKA_MENU_WINDOW_LAUNCHER)
+    {
+      place_over_monitor (self, anchor);
+    }
+  else
+    {
+      place_near_anchor (self, anchor);
+    }
   gtk_widget_show (GTK_WIDGET (self));
 
   /* The device grab uses owner_events, so clicks on the panel and its other
