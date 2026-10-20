@@ -232,19 +232,37 @@ struct _MockaMenuData
   GObject parent_instance;
 
   gchar **menus;           /* menu file basenames to load */
+  GPtrArray *trees;        /* MateMenuTree*, kept so they can be watched */
   GPtrArray *categories;   /* MockaMenuCategory*, menu order */
   GPtrArray *all_apps;     /* MockaMenuApp*, every app once */
   GHashTable *all_app_ids; /* id -> MockaMenuApp*, so an app is made once */
+
+  guint reload_id; /* the debounce waiting to read the tree again */
+  gboolean reloading;
 };
 
 G_DEFINE_TYPE (MockaMenuData, mocka_menu_data, G_TYPE_OBJECT)
+
+enum
+{
+  SIGNAL_CHANGED,
+  N_SIGNALS
+};
+
+static guint signals[N_SIGNALS];
+
+/* Changes arrive in bursts, so they are answered once they stop
+ * (SPEC section 14). */
+#define RELOAD_DELAY_MS 500
 
 static void
 mocka_menu_data_finalize (GObject *object)
 {
   MockaMenuData *self = MOCKA_MENU_DATA (object);
 
+  g_clear_handle_id (&self->reload_id, g_source_remove);
   g_strfreev (self->menus);
+  g_clear_pointer (&self->trees, g_ptr_array_unref);
   g_clear_pointer (&self->categories, g_ptr_array_unref);
   g_clear_pointer (&self->all_apps, g_ptr_array_unref);
   g_clear_pointer (&self->all_app_ids, g_hash_table_unref);
@@ -256,11 +274,15 @@ static void
 mocka_menu_data_class_init (MockaMenuDataClass *klass)
 {
   G_OBJECT_CLASS (klass)->finalize = mocka_menu_data_finalize;
+
+  signals[SIGNAL_CHANGED]
+      = g_signal_new ("changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
 }
 
 static void
 mocka_menu_data_init (MockaMenuData *self)
 {
+  self->trees = g_ptr_array_new_with_free_func (g_object_unref);
   self->categories = g_ptr_array_new_with_free_func (g_object_unref);
   self->all_apps = g_ptr_array_new_with_free_func (g_object_unref);
   self->all_app_ids = g_hash_table_new (g_str_hash, g_str_equal);
@@ -369,6 +391,47 @@ category_for_directory (MateMenuTreeDirectory *directory)
 }
 
 static gboolean
+reload (gpointer data)
+{
+  MockaMenuData *self = data;
+  GError *error = NULL;
+
+  self->reload_id = 0;
+
+  if (!mocka_menu_data_load (self, &error))
+    {
+      g_warning ("mocka-menu: could not read the menu again: %s", error->message);
+      g_clear_error (&error);
+      return G_SOURCE_REMOVE;
+    }
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+
+  return G_SOURCE_REMOVE;
+}
+
+static void
+on_tree_changed (MateMenuTree *tree, MockaMenuData *self)
+{
+  /* Reading the tree makes it report a change of its own. */
+  if (self->reloading)
+    {
+      return;
+    }
+
+  g_clear_handle_id (&self->reload_id, g_source_remove);
+  self->reload_id = g_timeout_add (RELOAD_DELAY_MS, reload, self);
+}
+
+/* Kept alive so it goes on reporting changes (SPEC section 14). */
+static void
+keep_tree (MockaMenuData *self, MateMenuTree *tree)
+{
+  g_signal_connect (tree, "changed", G_CALLBACK (on_tree_changed), self);
+  g_ptr_array_add (self->trees, tree);
+}
+
+static gboolean
 load_one_menu (MockaMenuData *self, const gchar *basename, GError **error)
 {
   MateMenuTree *tree;
@@ -393,7 +456,7 @@ load_one_menu (MockaMenuData *self, const gchar *basename, GError **error)
   if (root == NULL)
     {
       /* A menu with nothing in it is not an error: nothing is installed. */
-      g_object_unref (tree);
+      keep_tree (self, tree);
       return TRUE;
     }
 
@@ -432,29 +495,38 @@ load_one_menu (MockaMenuData *self, const gchar *basename, GError **error)
   matemenu_tree_iter_unref (iter);
 
   matemenu_tree_item_unref (root);
-  g_object_unref (tree);
+  keep_tree (self, tree);
+
   return TRUE;
 }
 
 gboolean
 mocka_menu_data_load (MockaMenuData *self, GError **error)
 {
+  gboolean loaded = TRUE;
+
   g_return_val_if_fail (MOCKA_IS_MENU_DATA (self), FALSE);
 
+  self->reloading = TRUE;
+
+  g_ptr_array_set_size (self->trees, 0);
   g_ptr_array_set_size (self->categories, 0);
   g_ptr_array_set_size (self->all_apps, 0);
   g_hash_table_remove_all (self->all_app_ids);
 
-  for (gsize i = 0; self->menus != NULL && self->menus[i] != NULL; i++)
+  for (gsize i = 0; loaded && self->menus != NULL && self->menus[i] != NULL; i++)
     {
-      if (!load_one_menu (self, self->menus[i], error))
-        {
-          return FALSE;
-        }
+      loaded = load_one_menu (self, self->menus[i], error);
     }
 
-  g_ptr_array_sort (self->all_apps, compare_by_name);
-  return TRUE;
+  if (loaded)
+    {
+      g_ptr_array_sort (self->all_apps, compare_by_name);
+    }
+
+  self->reloading = FALSE;
+
+  return loaded;
 }
 
 GPtrArray *

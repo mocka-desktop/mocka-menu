@@ -191,6 +191,9 @@ mocka_favourites_new (MockaMenuData *data, GSettings *settings)
   g_signal_connect_object (settings, "changed::" FAVOURITES_KEY, G_CALLBACK (on_settings_changed), self,
                            G_CONNECT_SWAPPED);
 
+  /* An app installed or removed changes which favourites can be shown. */
+  g_signal_connect_object (data, "changed", G_CALLBACK (on_settings_changed), self, G_CONNECT_SWAPPED);
+
   return self;
 }
 

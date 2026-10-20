@@ -114,18 +114,18 @@ grabs and marco's bindings keep working.
 ## M4: Launcher layout
 
 - [x] Full-monitor window on the monitor of the panel button
-- [ ] Transparent background with a compositor, solid without one
+- [x] Transparent background with a compositor, solid without one
 - [x] Favourites column on the far left, categories in a row under the search, and app grid with wrapped names
 - [x] Search at the top of the screen for `top` and `bottom`
-- [ ] Grid keyboard navigation by row and column
-- [ ] Clicking empty background closes
-- [ ] `layout` setting, switching applied while the menu is closed
-- [ ] Manual test with the compositor on and off
+- [x] Grid keyboard navigation by row and column
+- [x] Clicking empty background closes
+- [x] `layout` setting, switching applied while the menu is closed
+- [x] Manual test with the compositor on and off
 - [x] Decide vertical scrolling or paging (SPEC section 23). Paged, with dots and side arrows
 
 ## M5: Live updates, panel search, preferences (first alpha)
 
-- [ ] Change debounce, background rebuild, swap when closed
+- [x] Change debounce, background rebuild, swap when closed
 - [ ] Diff and splice while open, keeping category, search, scroll, and selection, with unit tests for the diff
 - [ ] Manual test: install and remove packages with `pkg` while the menu is open, in both layouts
 - [ ] `panel` search position: entry beside the button, focus on click and Super, opening on typing, Up, Down, and Enter, fallback to `top` on vertical panels

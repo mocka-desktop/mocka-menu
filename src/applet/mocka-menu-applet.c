@@ -44,7 +44,8 @@ struct _MockaMenuApplet
   MockaMenuData *data;
   MockaFavourites *favourites;
   MockaHotkey *hotkey;
-  GSettings *settings; /* shared by every applet, not owned (SPEC section 15) */
+  GSettings *settings;   /* shared by every applet, not owned (SPEC section 15) */
+  gboolean tree_changed; /* a reload waiting for the menu to close */
 };
 
 G_DEFINE_TYPE (MockaMenuApplet, mocka_menu_applet, PANEL_TYPE_APPLET)
@@ -185,9 +186,46 @@ on_menu_opened (MockaMenuApplet *self)
 }
 
 static void
+rebuild_view (MockaMenuApplet *self)
+{
+  self->tree_changed = FALSE;
+
+  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
+    {
+      mocka_launcher_view_rebuild (MOCKA_LAUNCHER_VIEW (self->view));
+    }
+  else if (MOCKA_IS_CLASSIC_VIEW (self->view))
+    {
+      mocka_classic_view_rebuild (MOCKA_CLASSIC_VIEW (self->view));
+    }
+}
+
+static void
 on_menu_closed (MockaMenuApplet *self)
 {
   gtk_widget_unset_state_flags (self->button, GTK_STATE_FLAG_ACTIVE);
+
+  if (self->tree_changed)
+    {
+      rebuild_view (self);
+    }
+}
+
+/*
+ * The new list replaces the old one while the menu is closed
+ * (SPEC section 14). Applying it to an open menu is the next step, where
+ * only the difference may move.
+ */
+static void
+on_tree_changed (MockaMenuApplet *self)
+{
+  if (mocka_menu_window_is_open (MOCKA_MENU_WINDOW (self->menu_window)))
+    {
+      self->tree_changed = TRUE;
+      return;
+    }
+
+  rebuild_view (self);
 }
 
 static void
@@ -387,6 +425,7 @@ build_menu_contents (MockaMenuApplet *self)
   self->favourites = mocka_favourites_new (self->data, self->settings);
   build_view (self);
 
+  g_signal_connect_object (self->data, "changed", G_CALLBACK (on_tree_changed), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->settings, "changed::layout", G_CALLBACK (update_layout), self, G_CONNECT_SWAPPED);
   g_signal_connect_swapped (self->settings, "changed::rollover", G_CALLBACK (update_rollover), self);
   g_signal_connect_swapped (self->settings, "changed::search-position", G_CALLBACK (update_search_position), self);
