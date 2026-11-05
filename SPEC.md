@@ -29,7 +29,7 @@ layouts:
 Both layouts share the same search, favourites, session controls, app menu,
 and settings. The layout is a setting and can be changed at any time.
 
-Platform: X11, FreeBSD first. Wayland is out of scope.
+Platform: X11, FreeBSD first. Wayland support is on the table but not yet planned.
 
 ## 2. Terms
 
