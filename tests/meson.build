@@ -58,3 +58,9 @@ test_pins = executable('test-pins',
   dependencies: [mocka_menu_dep],
 )
 test('pins', test_pins, env: pins_env)
+
+test_app_model = executable('test-app-model',
+  'test-app-model.c',
+  dependencies: [mocka_menu_dep, mate_menu_dep],
+)
+test('app-model', test_app_model, env: test_env)
