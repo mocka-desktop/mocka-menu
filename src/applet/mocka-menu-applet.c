@@ -44,8 +44,7 @@ struct _MockaMenuApplet
   MockaMenuData *data;
   MockaFavourites *favourites;
   MockaHotkey *hotkey;
-  GSettings *settings;   /* shared by every applet, not owned (SPEC section 15) */
-  gboolean tree_changed; /* a reload waiting for the menu to close */
+  GSettings *settings; /* shared by every applet, not owned (SPEC section 15) */
 };
 
 G_DEFINE_TYPE (MockaMenuApplet, mocka_menu_applet, PANEL_TYPE_APPLET)
@@ -188,8 +187,6 @@ on_menu_opened (MockaMenuApplet *self)
 static void
 rebuild_view (MockaMenuApplet *self)
 {
-  self->tree_changed = FALSE;
-
   if (MOCKA_IS_LAUNCHER_VIEW (self->view))
     {
       mocka_launcher_view_rebuild (MOCKA_LAUNCHER_VIEW (self->view));
@@ -204,28 +201,41 @@ static void
 on_menu_closed (MockaMenuApplet *self)
 {
   gtk_widget_unset_state_flags (self->button, GTK_STATE_FLAG_ACTIVE);
+}
 
-  if (self->tree_changed)
+/*
+ * A hidden window keeps the style it was last shown with, so after the
+ * interface font changes the next opening would measure the old one. The rows
+ * are built again while it is closed; an open menu restyles itself.
+ */
+static void
+on_font_changed (MockaMenuApplet *self)
+{
+  if (!mocka_menu_window_is_open (MOCKA_MENU_WINDOW (self->menu_window)))
     {
       rebuild_view (self);
     }
 }
 
-/*
- * The new list replaces the old one while the menu is closed
- * (SPEC section 14). Applying it to an open menu is the next step, where
- * only the difference may move.
- */
+/* Closed, the whole list is replaced; open, only the difference moves
+ * (SPEC section 14). */
 static void
 on_tree_changed (MockaMenuApplet *self)
 {
-  if (mocka_menu_window_is_open (MOCKA_MENU_WINDOW (self->menu_window)))
+  if (!mocka_menu_window_is_open (MOCKA_MENU_WINDOW (self->menu_window)))
     {
-      self->tree_changed = TRUE;
+      rebuild_view (self);
       return;
     }
 
-  rebuild_view (self);
+  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
+    {
+      mocka_launcher_view_update (MOCKA_LAUNCHER_VIEW (self->view));
+    }
+  else if (MOCKA_IS_CLASSIC_VIEW (self->view))
+    {
+      mocka_classic_view_update (MOCKA_CLASSIC_VIEW (self->view));
+    }
 }
 
 static void
@@ -426,9 +436,12 @@ build_menu_contents (MockaMenuApplet *self)
   build_view (self);
 
   g_signal_connect_object (self->data, "changed", G_CALLBACK (on_tree_changed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (gtk_settings_get_default (), "notify::gtk-font-name", G_CALLBACK (on_font_changed), self,
+                           G_CONNECT_SWAPPED);
   g_signal_connect_object (self->settings, "changed::layout", G_CALLBACK (update_layout), self, G_CONNECT_SWAPPED);
-  g_signal_connect_swapped (self->settings, "changed::rollover", G_CALLBACK (update_rollover), self);
-  g_signal_connect_swapped (self->settings, "changed::search-position", G_CALLBACK (update_search_position), self);
+  g_signal_connect_object (self->settings, "changed::rollover", G_CALLBACK (update_rollover), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->settings, "changed::search-position", G_CALLBACK (update_search_position), self,
+                           G_CONNECT_SWAPPED);
 
   /* Every applet watches the key for now; one owner comes next. */
   self->hotkey = mocka_hotkey_new ();
@@ -436,7 +449,7 @@ build_menu_contents (MockaMenuApplet *self)
     {
       g_signal_connect_swapped (self->hotkey, "activated", G_CALLBACK (on_hotkey_activated), self);
       update_hotkey (self);
-      g_signal_connect_swapped (self->settings, "changed::hot-key", G_CALLBACK (update_hotkey), self);
+      g_signal_connect_object (self->settings, "changed::hot-key", G_CALLBACK (update_hotkey), self, G_CONNECT_SWAPPED);
     }
   g_signal_connect_swapped (self->menu_window, "escape", G_CALLBACK (on_menu_escape), self);
 }
@@ -560,8 +573,9 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
   g_signal_connect_swapped (self->menu_window, "reset", G_CALLBACK (on_menu_reset), self);
   g_signal_connect_swapped (self->menu_window, "opened", G_CALLBACK (on_menu_opened), self);
   g_signal_connect_swapped (self->menu_window, "closed", G_CALLBACK (on_menu_closed), self);
-  g_signal_connect_swapped (self->settings, "changed::label-visible", G_CALLBACK (update_label), self);
-  g_signal_connect_swapped (self->settings, "changed::label-text", G_CALLBACK (update_label), self);
+  g_signal_connect_object (self->settings, "changed::label-visible", G_CALLBACK (update_label), self,
+                           G_CONNECT_SWAPPED);
+  g_signal_connect_object (self->settings, "changed::label-text", G_CALLBACK (update_label), self, G_CONNECT_SWAPPED);
   build_menu_contents (self);
 
   setup_button_menu (self);

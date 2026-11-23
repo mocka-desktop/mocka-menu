@@ -17,11 +17,16 @@
 #include <glib/gi18n-lib.h>
 
 #include "app-item.h"
+#include "app-model.h"
 #include "category-list.h"
 #include "classic-view.h"
 #include "menu-window.h"
 #include "search.h"
 #include "session.h"
+
+/* The app list asks for room between these, in characters. */
+#define NAME_CHARS_MIN 20
+#define NAME_CHARS_MAX 24
 
 /* Keeps a value inside a range even when the range itself is empty. */
 static gint
@@ -115,9 +120,12 @@ struct _MockaClassicView
   GtkWidget *app_scroller;
   GtkWidget *column; /* favourites above the session controls */
 
+  GPtrArray *apps;     /* MockaMenuApp*, what the list is showing */
+  gint name_chars;     /* room the names ask for, from the longest on show */
   guint app_count;     /* rows in app_list, for keyboard navigation */
   gulong toplevel_key; /* handler on the window, so the keys come first */
   gboolean search_pending;
+  gboolean updating; /* a tree change is being applied, not a user's click */
 };
 
 G_DEFINE_TYPE (MockaClassicView, mocka_classic_view, GTK_TYPE_BOX)
@@ -132,6 +140,7 @@ static guint view_signals[N_VIEW_SIGNALS];
 
 static void show_apps (MockaClassicView *self, GPtrArray *apps);
 static void on_search_changed (GtkSearchEntry *entry, MockaClassicView *self);
+static void select_app_at (MockaClassicView *self, gint index);
 
 static void
 emit_activated (MockaClassicView *self, MockaMenuApp *app)
@@ -148,20 +157,52 @@ destroy_row (GtkWidget *widget, gpointer user_data)
   gtk_widget_destroy (widget);
 }
 
+/* The longest name on show, so the list is as wide as its contents without
+ * one outlandish name stretching the window off the screen. */
+static gint
+name_chars_for (GPtrArray *apps)
+{
+  glong longest = 0;
+
+  for (guint i = 0; apps != NULL && i < apps->len; i++)
+    {
+      const gchar *name = mocka_menu_app_get_name (g_ptr_array_index (apps, i));
+
+      longest = MAX (longest, g_utf8_strlen (name != NULL ? name : "", -1));
+    }
+
+  return (gint)CLAMP (longest, NAME_CHARS_MIN, NAME_CHARS_MAX);
+}
+
+static void
+remember_apps (MockaClassicView *self, GPtrArray *apps)
+{
+  g_clear_pointer (&self->apps, g_ptr_array_unref);
+  self->apps = g_ptr_array_new_with_free_func (g_object_unref);
+
+  for (guint i = 0; apps != NULL && i < apps->len; i++)
+    {
+      g_ptr_array_add (self->apps, g_object_ref (g_ptr_array_index (apps, i)));
+    }
+
+  self->app_count = self->apps->len;
+}
+
 static void
 show_apps (MockaClassicView *self, GPtrArray *apps)
 {
   GtkAdjustment *adjustment;
 
   gtk_container_foreach (GTK_CONTAINER (self->app_list), destroy_row, NULL);
+  remember_apps (self, apps);
+  self->name_chars = name_chars_for (self->apps);
 
-  for (guint i = 0; apps != NULL && i < apps->len; i++)
+  for (guint i = 0; i < self->apps->len; i++)
     {
-      gtk_container_add (GTK_CONTAINER (self->app_list),
-                         mocka_app_item_new_row (g_ptr_array_index (apps, i), self->favourites));
+      gtk_container_add (GTK_CONTAINER (self->app_list), mocka_app_item_new_row (g_ptr_array_index (self->apps, i),
+                                                                                 self->favourites, self->name_chars));
     }
 
-  self->app_count = apps != NULL ? apps->len : 0;
   gtk_widget_show_all (self->app_list);
 
   /* A new category starts at the top of its list. */
@@ -169,12 +210,52 @@ show_apps (MockaClassicView *self, GPtrArray *apps)
   gtk_adjustment_set_value (adjustment, gtk_adjustment_get_lower (adjustment));
 }
 
+/*
+ * The same apps, applied as the difference so the rows that stay keep their
+ * place, their widget and the scroll position (SPEC section 14).
+ */
+static void
+splice_apps (MockaClassicView *self, GPtrArray *apps)
+{
+  GArray *steps = mocka_app_model_diff (self->apps, apps);
+  GtkListBoxRow *selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->app_list));
+  gint was = selected != NULL ? gtk_list_box_row_get_index (selected) : -1;
+
+  for (guint i = 0; i < steps->len; i++)
+    {
+      MockaAppStep *step = &g_array_index (steps, MockaAppStep, i);
+      GtkListBoxRow *row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->app_list), (gint)step->position);
+
+      if (step->insert)
+        {
+          GtkWidget *item = mocka_app_item_new_row (step->app, self->favourites, self->name_chars);
+
+          gtk_list_box_insert (GTK_LIST_BOX (self->app_list), item, (gint)step->position);
+          gtk_widget_show_all (item);
+        }
+      else if (row != NULL)
+        {
+          gtk_widget_destroy (GTK_WIDGET (row));
+        }
+    }
+
+  remember_apps (self, apps);
+
+  /* A removed selection moves to whatever took its place (SPEC section 14). */
+  if (was >= 0 && gtk_list_box_get_selected_row (GTK_LIST_BOX (self->app_list)) == NULL)
+    {
+      select_app_at (self, was);
+    }
+
+  g_array_unref (steps);
+}
+
 static void
 on_category_selected (MockaCategoryList *categories, MockaClassicView *self)
 {
   /* While there is search text the category selection is ignored
    * (SPEC section 6). */
-  if (mocka_classic_view_is_searching (self))
+  if (self->updating || mocka_classic_view_is_searching (self))
     {
       return;
     }
@@ -500,6 +581,29 @@ mocka_classic_view_rebuild (MockaClassicView *self)
 }
 
 void
+mocka_classic_view_update (MockaClassicView *self)
+{
+  GPtrArray *results;
+
+  g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
+
+  self->updating = TRUE;
+  mocka_category_list_update (MOCKA_CATEGORY_LIST (self->categories));
+  self->updating = FALSE;
+
+  if (!mocka_classic_view_is_searching (self))
+    {
+      splice_apps (self, mocka_category_list_get_apps (MOCKA_CATEGORY_LIST (self->categories)));
+      return;
+    }
+
+  results = mocka_search_run (mocka_menu_data_get_all_apps (self->data), gtk_entry_get_text (GTK_ENTRY (self->entry)),
+                              self->favourites != NULL ? mocka_favourites_get_ids (self->favourites) : NULL);
+  splice_apps (self, results);
+  g_ptr_array_unref (results);
+}
+
+void
 mocka_classic_view_reset (MockaClassicView *self)
 {
   g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
@@ -608,7 +712,7 @@ mocka_classic_view_new (MockaMenuData *data, MockaFavourites *favourites)
 
       gtk_box_pack_start (GTK_BOX (self->column), column, TRUE, TRUE, 0);
       g_signal_connect_swapped (column, "app-activated", G_CALLBACK (on_child_app_activated), self);
-      g_signal_connect_swapped (favourites, "changed", G_CALLBACK (on_favourites_changed), self);
+      g_signal_connect_object (favourites, "changed", G_CALLBACK (on_favourites_changed), self, G_CONNECT_SWAPPED);
       g_signal_connect_object (mocka_app_drag_get (), "finished", G_CALLBACK (on_drag_finished), self,
                                G_CONNECT_SWAPPED);
     }

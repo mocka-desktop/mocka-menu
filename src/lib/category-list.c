@@ -18,7 +18,8 @@
 #include "app-item.h"
 #include "category-list.h"
 
-#define CATEGORY_ICON_SIZE 16
+/* Beside the category name, so it follows the interface font. */
+#define CATEGORY_ICON_SCALE 0.9
 #define ROW_SPACING 8
 #define ROW_PADDING 4
 
@@ -140,7 +141,7 @@ make_content (const gchar *name, GIcon *icon)
       GtkWidget *image = gtk_image_new_from_gicon (drawn, GTK_ICON_SIZE_MENU);
 
       g_object_unref (drawn);
-      gtk_image_set_pixel_size (GTK_IMAGE (image), CATEGORY_ICON_SIZE);
+      gtk_image_set_pixel_size (GTK_IMAGE (image), mocka_icon_size_for_text (image, CATEGORY_ICON_SCALE));
       gtk_box_pack_start (GTK_BOX (box), image, FALSE, FALSE, 0);
     }
 
@@ -258,13 +259,6 @@ mocka_category_list_set_searching (MockaCategoryList *self, gboolean searching)
     }
 }
 
-gboolean
-mocka_category_list_is_sensitive (MockaCategoryList *self)
-{
-  g_return_val_if_fail (MOCKA_IS_CATEGORY_LIST (self), FALSE);
-  return gtk_widget_get_sensitive (self->scroller);
-}
-
 /* Focus on the box itself does nothing: the items hold it. */
 gboolean
 mocka_category_list_grab_focus_on_row (MockaCategoryList *self)
@@ -320,12 +314,10 @@ mocka_category_list_reset (MockaCategoryList *self, gboolean take_focus)
   gtk_adjustment_set_value (adjustment, gtk_adjustment_get_lower (adjustment));
 }
 
-void
-mocka_category_list_rebuild (MockaCategoryList *self)
+static void
+build_items (MockaCategoryList *self)
 {
   GPtrArray *categories;
-
-  g_return_if_fail (MOCKA_IS_CATEGORY_LIST (self));
 
   gtk_container_foreach (GTK_CONTAINER (self->items), destroy_row, NULL);
 
@@ -356,8 +348,60 @@ mocka_category_list_rebuild (MockaCategoryList *self)
     }
 
   gtk_widget_show_all (self->items);
+}
 
+void
+mocka_category_list_rebuild (MockaCategoryList *self)
+{
+  g_return_if_fail (MOCKA_IS_CATEGORY_LIST (self));
+
+  build_items (self);
   mocka_category_list_reset (self, FALSE);
+}
+
+/* The categories are rebuilt from a new tree, so the one that was selected
+ * has to be found again by its id. */
+void
+mocka_category_list_update (MockaCategoryList *self)
+{
+  GtkWidget *item;
+  gchar *selected = NULL;
+  gint restored = -1;
+
+  g_return_if_fail (MOCKA_IS_CATEGORY_LIST (self));
+
+  item = selected_item (self);
+  if (item != NULL)
+    {
+      MockaMenuCategory *category = g_object_get_data (G_OBJECT (item), "category");
+
+      selected = g_strdup (category != NULL ? mocka_menu_category_get_id (category) : NULL);
+    }
+
+  build_items (self);
+
+  for (gint i = 0; selected != NULL; i++)
+    {
+      MockaMenuCategory *category;
+
+      item = nth_item (self, i);
+      if (item == NULL)
+        {
+          break;
+        }
+
+      category = g_object_get_data (G_OBJECT (item), "category");
+      if (category != NULL && g_strcmp0 (mocka_menu_category_get_id (category), selected) == 0)
+        {
+          restored = i;
+          break;
+        }
+    }
+
+  /* Its category is gone, or "All" was showing: back to "All". */
+  select_item (self, nth_item (self, restored >= 0 ? restored : 0));
+
+  g_free (selected);
 }
 
 static void

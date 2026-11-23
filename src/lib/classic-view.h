@@ -21,6 +21,9 @@ G_DECLARE_FINAL_TYPE (MockaClassicView, mocka_classic_view, MOCKA, CLASSIC_VIEW,
 /* Owns neither the menu nor the favourites, and both must outlive it. */
 GtkWidget *mocka_classic_view_new (MockaMenuData *data, MockaFavourites *favourites);
 
+/* A tree change applied to an open menu, as the difference only. */
+void mocka_classic_view_update (MockaClassicView *self);
+
 /* Back to "All", scrolled to the top, nothing selected (SPEC section 4). */
 void mocka_classic_view_reset (MockaClassicView *self);
 
@@ -46,6 +49,8 @@ gboolean mocka_classic_view_is_searching (MockaClassicView *self);
 void mocka_classic_view_clear_search (MockaClassicView *self);
 
 /* The size the menu asks for before the monitor is taken into account. */
+/* A floor only: the rows ask for their names in their own font, so the
+ * window follows the interface font through them. */
 #define MOCKA_CLASSIC_WANT_WIDTH 480
 #define MOCKA_CLASSIC_WANT_HEIGHT 480
 

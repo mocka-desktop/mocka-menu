@@ -12,7 +12,11 @@
 #include "app-menu.h"
 #include "menu-window.h"
 
-#define ROW_ICON_SIZE 24
+/* Beside text, so it grows with it. The factor keeps the familiar size at
+ * the usual interface font. */
+#define ROW_ICON_SCALE 1.3
+#define MIN_ICON_SIZE 16
+#define MAX_ICON_SIZE 64
 #define COLUMN_ICON_SIZE 32
 #define TILE_ICON_SIZE 64
 #define TILE_WIDTH 160
@@ -159,6 +163,24 @@ MockaMenuApp *
 mocka_app_item_get_app (GtkWidget *widget)
 {
   return widget != NULL ? g_object_get_data (G_OBJECT (widget), "app") : NULL;
+}
+
+static gint
+text_height (GtkWidget *widget)
+{
+  PangoContext *pango = gtk_widget_get_pango_context (widget);
+  PangoFontMetrics *metrics = pango_context_get_metrics (pango, NULL, NULL);
+  gint height = (pango_font_metrics_get_ascent (metrics) + pango_font_metrics_get_descent (metrics)) / PANGO_SCALE;
+
+  pango_font_metrics_unref (metrics);
+
+  return MAX (1, height);
+}
+
+gint
+mocka_icon_size_for_text (GtkWidget *widget, gdouble factor)
+{
+  return CLAMP ((gint)(text_height (widget) * factor), MIN_ICON_SIZE, MAX_ICON_SIZE);
 }
 
 GtkRequisition
@@ -347,7 +369,7 @@ app_image (MockaMenuApp *app, gint size)
 }
 
 GtkWidget *
-mocka_app_item_new_row (MockaMenuApp *app, MockaFavourites *favourites)
+mocka_app_item_new_row (MockaMenuApp *app, MockaFavourites *favourites, gint name_chars)
 {
   GtkWidget *row = gtk_list_box_row_new ();
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, ROW_SPACING);
@@ -356,8 +378,10 @@ mocka_app_item_new_row (MockaMenuApp *app, MockaFavourites *favourites)
 
   gtk_label_set_xalign (GTK_LABEL (label), 0.0F);
   gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+  /* Asks for room in the font that draws it, which is what sizes the window. */
+  gtk_label_set_width_chars (GTK_LABEL (label), name_chars);
 
-  gtk_box_pack_start (GTK_BOX (box), app_image (app, ROW_ICON_SIZE), FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (box), app_image (app, mocka_icon_size_for_text (row, ROW_ICON_SCALE)), FALSE, FALSE, 0);
   gtk_box_pack_start (GTK_BOX (box), label, TRUE, TRUE, 0);
   gtk_container_set_border_width (GTK_CONTAINER (box), ROW_PADDING);
 
