@@ -24,6 +24,10 @@ GtkWidget *mocka_category_list_new (MockaMenuData *data, GtkOrientation orientat
 /* Reads the menu tree again, then selects "All". */
 void mocka_category_list_rebuild (MockaCategoryList *self);
 
+/* The same, but keeping the category that is selected, for a tree that
+ * changed while the menu is open (SPEC section 14). */
+void mocka_category_list_update (MockaCategoryList *self);
+
 /* "All" selected, scrolled to the top, holding the keyboard focus. */
 void mocka_category_list_reset (MockaCategoryList *self, gboolean take_focus);
 
@@ -41,6 +45,5 @@ void mocka_category_list_set_searching (MockaCategoryList *self, gboolean search
 
 /* For the layouts' own keyboard handling (SPEC section 12.2). */
 gboolean mocka_category_list_grab_focus_on_row (MockaCategoryList *self);
-gboolean mocka_category_list_is_sensitive (MockaCategoryList *self);
 
 G_END_DECLS

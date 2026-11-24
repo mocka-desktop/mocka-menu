@@ -82,11 +82,50 @@ reload (MockaFavourites *self)
     }
 }
 
+/* The stored list and the installed ones it resolves to, as one string. */
+static gchar *
+signature (MockaFavourites *self)
+{
+  GString *out = g_string_new (NULL);
+
+  for (gsize i = 0; self->ids != NULL && self->ids[i] != NULL; i++)
+    {
+      g_string_append (out, self->ids[i]);
+      g_string_append_c (out, '\n');
+    }
+
+  g_string_append_c (out, '\x1f');
+
+  for (guint i = 0; i < self->apps->len; i++)
+    {
+      g_string_append (out, mocka_menu_app_get_id (g_ptr_array_index (self->apps, i)));
+      g_string_append_c (out, '\n');
+    }
+
+  return g_string_free (out, FALSE);
+}
+
+/*
+ * A menu tree change reloads this as well. Staying quiet when the reload
+ * changed nothing keeps the views from rerunning their search, which would
+ * throw away the scroll and the selection the tree update is preserving.
+ */
 static void
 on_settings_changed (MockaFavourites *self)
 {
+  gchar *before = signature (self);
+  gchar *after = NULL;
+
   reload (self);
-  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+  after = signature (self);
+
+  if (!g_str_equal (before, after))
+    {
+      g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+    }
+
+  g_free (before);
+  g_free (after);
 }
 
 static void
@@ -190,6 +229,9 @@ mocka_favourites_new (MockaMenuData *data, GSettings *settings)
    */
   g_signal_connect_object (settings, "changed::" FAVOURITES_KEY, G_CALLBACK (on_settings_changed), self,
                            G_CONNECT_SWAPPED);
+
+  /* An app installed or removed changes which favourites can be shown. */
+  g_signal_connect_object (data, "changed", G_CALLBACK (on_settings_changed), self, G_CONNECT_SWAPPED);
 
   return self;
 }

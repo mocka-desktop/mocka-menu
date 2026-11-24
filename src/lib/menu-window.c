@@ -358,13 +358,20 @@ place_near_anchor (MockaMenuWindow *self, GtkWidget *anchor)
   GtkRequisition natural;
   GtkRequisition want;
 
+  /*
+   * A button with no rectangle yet, right after the panel starts, used to
+   * leave the window at whatever size its contents happened to ask for, which
+   * is why it had to be opened twice. It is placed in the corner instead, and
+   * sized either way.
+   */
   if (!widget_root_rect (anchor, &anchor_rect))
     {
-      return;
+      anchor_rect.x = anchor_rect.y = 0;
+      anchor_rect.width = anchor_rect.height = 0;
     }
 
   display = gtk_widget_get_display (anchor);
-  monitor = gdk_display_get_monitor_at_window (display, gtk_widget_get_window (anchor));
+  monitor = gdk_display_get_monitor_at_point (display, anchor_rect.x, anchor_rect.y);
   if (monitor == NULL)
     {
       monitor = gdk_display_get_primary_monitor (display);

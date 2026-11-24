@@ -67,6 +67,7 @@ struct _MockaLauncherView
 
   gdouble scrolled;
   gboolean search_pending;
+  gboolean updating; /* a tree change is being applied, not a user's click */
   gulong toplevel_key;
 };
 
@@ -344,7 +345,7 @@ show_apps (MockaLauncherView *self, GPtrArray *apps)
 static void
 on_category_selected (MockaCategoryList *categories, MockaLauncherView *self)
 {
-  if (mocka_launcher_view_is_searching (self))
+  if (self->updating || mocka_launcher_view_is_searching (self))
     {
       return;
     }
@@ -493,6 +494,56 @@ activate_selected (MockaLauncherView *self)
     {
       emit_activated (self, mocka_app_item_get_app (GTK_WIDGET (child)));
     }
+}
+
+static GtkWidget *
+selected_tile (MockaLauncherView *self)
+{
+  GtkWidget *page = current_page (self);
+  GList *selected = page != NULL ? gtk_flow_box_get_selected_children (GTK_FLOW_BOX (page)) : NULL;
+  GtkWidget *tile = selected != NULL ? GTK_WIDGET (selected->data) : NULL;
+
+  g_list_free (selected);
+
+  return tile;
+}
+
+static gboolean
+select_tile_for_app (MockaLauncherView *self, const gchar *id, gboolean take_focus)
+{
+  GList *pages = gtk_container_get_children (GTK_CONTAINER (self->pages));
+  gboolean found = FALSE;
+  guint page = 0;
+
+  for (GList *p = pages; !found && p != NULL; p = p->next, page++)
+    {
+      GList *tiles = gtk_container_get_children (GTK_CONTAINER (p->data));
+
+      for (GList *t = tiles; t != NULL; t = t->next)
+        {
+          MockaMenuApp *app = mocka_app_item_get_app (t->data);
+
+          if (app == NULL || g_strcmp0 (mocka_menu_app_get_id (app), id) != 0)
+            {
+              continue;
+            }
+
+          set_page (self, page);
+          gtk_flow_box_select_child (GTK_FLOW_BOX (p->data), GTK_FLOW_BOX_CHILD (t->data));
+          if (take_focus)
+            {
+              gtk_widget_grab_focus (t->data);
+            }
+          found = TRUE;
+          break;
+        }
+
+      g_list_free (tiles);
+    }
+
+  g_list_free (pages);
+
+  return found;
 }
 
 static void
@@ -774,6 +825,58 @@ mocka_launcher_view_rebuild (MockaLauncherView *self)
   mocka_launcher_view_reset (self);
 }
 
+/*
+ * The grid is cut into pages, so a change is applied by cutting them again
+ * rather than splicing rows. The page being read, the category and the search
+ * all stay as they are (SPEC section 14).
+ */
+void
+mocka_launcher_view_update (MockaLauncherView *self)
+{
+  guint page;
+  GPtrArray *results;
+  GtkWidget *tile;
+  MockaMenuApp *app;
+  gchar *selected = NULL;
+  gboolean had_focus;
+
+  g_return_if_fail (MOCKA_IS_LAUNCHER_VIEW (self));
+
+  page = self->page;
+  tile = selected_tile (self);
+  app = tile != NULL ? mocka_app_item_get_app (tile) : NULL;
+  had_focus = tile != NULL && gtk_widget_has_focus (tile);
+
+  if (app != NULL)
+    {
+      selected = g_strdup (mocka_menu_app_get_id (app));
+    }
+
+  self->updating = TRUE;
+  mocka_category_list_update (MOCKA_CATEGORY_LIST (self->categories));
+  self->updating = FALSE;
+
+  if (!mocka_launcher_view_is_searching (self))
+    {
+      show_apps (self, mocka_category_list_get_apps (MOCKA_CATEGORY_LIST (self->categories)));
+    }
+  else
+    {
+      results
+          = mocka_search_run (mocka_menu_data_get_all_apps (self->data), gtk_entry_get_text (GTK_ENTRY (self->entry)),
+                              self->favourites != NULL ? mocka_favourites_get_ids (self->favourites) : NULL);
+      show_apps (self, results);
+      g_ptr_array_unref (results);
+    }
+
+  if (selected == NULL || !select_tile_for_app (self, selected, had_focus))
+    {
+      set_page (self, page);
+    }
+
+  g_free (selected);
+}
+
 void
 mocka_launcher_view_reset (MockaLauncherView *self)
 {
@@ -898,7 +1001,7 @@ mocka_launcher_view_new (MockaMenuData *data, MockaFavourites *favourites)
       make_panel_transparent (favourites_column);
       gtk_box_pack_start (GTK_BOX (column), favourites_column, TRUE, TRUE, 0);
       g_signal_connect_swapped (favourites_column, "app-activated", G_CALLBACK (on_child_app_activated), self);
-      g_signal_connect_swapped (favourites, "changed", G_CALLBACK (on_favourites_changed), self);
+      g_signal_connect_object (favourites, "changed", G_CALLBACK (on_favourites_changed), self, G_CONNECT_SWAPPED);
       g_signal_connect_object (mocka_app_drag_get (), "finished", G_CALLBACK (on_drag_finished), self,
                                G_CONNECT_SWAPPED);
     }

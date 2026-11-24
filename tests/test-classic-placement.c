@@ -8,9 +8,10 @@
 
 #include "classic-view.h"
 
-static const GtkRequisition want = { MOCKA_CLASSIC_WANT_WIDTH, MOCKA_CLASSIC_WANT_HEIGHT };
 #define WANT_W MOCKA_CLASSIC_WANT_WIDTH
 #define WANT_H MOCKA_CLASSIC_WANT_HEIGHT
+
+static const GtkRequisition want = { WANT_W, WANT_H };
 
 /* A 1920x1080 monitor with a 40px panel, and a button at its left end. */
 static const GdkRectangle monitor_hd = { 0, 0, 1920, 1080 };

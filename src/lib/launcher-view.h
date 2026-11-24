@@ -26,6 +26,9 @@ GtkWidget *mocka_launcher_view_new (MockaMenuData *data, MockaFavourites *favour
 void mocka_launcher_view_reset (MockaLauncherView *self);
 void mocka_launcher_view_rebuild (MockaLauncherView *self);
 
+/* A tree change applied to an open menu, keeping the page and the search. */
+void mocka_launcher_view_update (MockaLauncherView *self);
+
 gboolean mocka_launcher_view_is_searching (MockaLauncherView *self);
 void mocka_launcher_view_clear_search (MockaLauncherView *self);
 

@@ -19,8 +19,11 @@ G_BEGIN_DECLS
  * (SPEC section 11.1).
  */
 
-/* Icon and name, for the Classic app list. */
-GtkWidget *mocka_app_item_new_row (MockaMenuApp *app, MockaFavourites *favourites);
+/* Icon and name, for the Classic app list. name_chars is the room the name
+ * asks for, in characters of its own font. */
+GtkWidget *mocka_app_item_new_row (MockaMenuApp *app, MockaFavourites *favourites, gint name_chars);
+/* The room an existing row's name asks for, when the longest name changes. */
+void mocka_app_item_row_set_name_chars (GtkWidget *row, gint name_chars);
 /* Icon alone, for the favourites column, at the size the layout wants. */
 GtkWidget *mocka_app_item_new_icon (MockaMenuApp *app, MockaFavourites *favourites, gint pixel_size);
 /* Large icon with the name below, for the Launcher grid. */
@@ -31,6 +34,9 @@ MockaMenuApp *mocka_app_item_get_app (GtkWidget *widget);
 
 /* The room a tile asks for, so a grid can work out how many of them fit. */
 GtkRequisition mocka_app_item_tile_size (void);
+
+/* An icon size that follows the interface font, for icons set beside text. */
+gint mocka_icon_size_for_text (GtkWidget *widget, gdouble factor);
 
 /* What the drag carries, so a column can accept a drop from a list. */
 #define MOCKA_APP_ITEM_TARGET "application/x-mocka-menu-app"
