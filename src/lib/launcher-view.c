@@ -496,6 +496,56 @@ activate_selected (MockaLauncherView *self)
     }
 }
 
+static GtkWidget *
+selected_tile (MockaLauncherView *self)
+{
+  GtkWidget *page = current_page (self);
+  GList *selected = page != NULL ? gtk_flow_box_get_selected_children (GTK_FLOW_BOX (page)) : NULL;
+  GtkWidget *tile = selected != NULL ? GTK_WIDGET (selected->data) : NULL;
+
+  g_list_free (selected);
+
+  return tile;
+}
+
+static gboolean
+select_tile_for_app (MockaLauncherView *self, const gchar *id, gboolean take_focus)
+{
+  GList *pages = gtk_container_get_children (GTK_CONTAINER (self->pages));
+  gboolean found = FALSE;
+  guint page = 0;
+
+  for (GList *p = pages; !found && p != NULL; p = p->next, page++)
+    {
+      GList *tiles = gtk_container_get_children (GTK_CONTAINER (p->data));
+
+      for (GList *t = tiles; t != NULL; t = t->next)
+        {
+          MockaMenuApp *app = mocka_app_item_get_app (t->data);
+
+          if (app == NULL || g_strcmp0 (mocka_menu_app_get_id (app), id) != 0)
+            {
+              continue;
+            }
+
+          set_page (self, page);
+          gtk_flow_box_select_child (GTK_FLOW_BOX (p->data), GTK_FLOW_BOX_CHILD (t->data));
+          if (take_focus)
+            {
+              gtk_widget_grab_focus (t->data);
+            }
+          found = TRUE;
+          break;
+        }
+
+      g_list_free (tiles);
+    }
+
+  g_list_free (pages);
+
+  return found;
+}
+
 static void
 focus_page (MockaLauncherView *self, gboolean last)
 {
@@ -785,10 +835,22 @@ mocka_launcher_view_update (MockaLauncherView *self)
 {
   guint page;
   GPtrArray *results;
+  GtkWidget *tile;
+  MockaMenuApp *app;
+  gchar *selected = NULL;
+  gboolean had_focus;
 
   g_return_if_fail (MOCKA_IS_LAUNCHER_VIEW (self));
 
   page = self->page;
+  tile = selected_tile (self);
+  app = tile != NULL ? mocka_app_item_get_app (tile) : NULL;
+  had_focus = tile != NULL && gtk_widget_has_focus (tile);
+
+  if (app != NULL)
+    {
+      selected = g_strdup (mocka_menu_app_get_id (app));
+    }
 
   self->updating = TRUE;
   mocka_category_list_update (MOCKA_CATEGORY_LIST (self->categories));
@@ -807,7 +869,12 @@ mocka_launcher_view_update (MockaLauncherView *self)
       g_ptr_array_unref (results);
     }
 
-  set_page (self, page);
+  if (selected == NULL || !select_tile_for_app (self, selected, had_focus))
+    {
+      set_page (self, page);
+    }
+
+  g_free (selected);
 }
 
 void

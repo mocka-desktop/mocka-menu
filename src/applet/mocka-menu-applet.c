@@ -45,6 +45,7 @@ struct _MockaMenuApplet
   MockaFavourites *favourites;
   MockaHotkey *hotkey;
   GSettings *settings; /* shared by every applet, not owned (SPEC section 15) */
+  gboolean font_changed_while_open;
 };
 
 G_DEFINE_TYPE (MockaMenuApplet, mocka_menu_applet, PANEL_TYPE_APPLET)
@@ -201,20 +202,29 @@ static void
 on_menu_closed (MockaMenuApplet *self)
 {
   gtk_widget_unset_state_flags (self->button, GTK_STATE_FLAG_ACTIVE);
+
+  if (self->font_changed_while_open)
+    {
+      self->font_changed_while_open = FALSE;
+      rebuild_view (self);
+    }
 }
 
 /*
- * A hidden window keeps the style it was last shown with, so after the
- * interface font changes the next opening would measure the old one. The rows
- * are built again while it is closed; an open menu restyles itself.
+ * A hidden window keeps the style it was last shown with, so the next opening
+ * would measure the old font. Rebuilding needs the menu closed, so an open one
+ * waits until it is.
  */
 static void
 on_font_changed (MockaMenuApplet *self)
 {
-  if (!mocka_menu_window_is_open (MOCKA_MENU_WINDOW (self->menu_window)))
+  if (mocka_menu_window_is_open (MOCKA_MENU_WINDOW (self->menu_window)))
     {
-      rebuild_view (self);
+      self->font_changed_while_open = TRUE;
+      return;
     }
+
+  rebuild_view (self);
 }
 
 /* Closed, the whole list is replaced; open, only the difference moves

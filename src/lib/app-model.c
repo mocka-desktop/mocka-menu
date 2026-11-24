@@ -14,6 +14,25 @@ id_of (GPtrArray *apps, guint index)
   return mocka_menu_app_get_id (g_ptr_array_index (apps, index));
 }
 
+static const gchar *
+command_of (MockaMenuApp *app)
+{
+  GDesktopAppInfo *info = mocka_menu_app_get_app_info (app);
+
+  return info != NULL ? g_app_info_get_commandline (G_APP_INFO (info)) : NULL;
+}
+
+/* Everything a row draws or launches, so an entry rewritten in place is
+ * noticed even though its ID and its position have not moved. */
+static gboolean
+same_details (MockaMenuApp *a, MockaMenuApp *b)
+{
+  return g_strcmp0 (mocka_menu_app_get_name (a), mocka_menu_app_get_name (b)) == 0
+         && g_strcmp0 (mocka_menu_app_get_comment (a), mocka_menu_app_get_comment (b)) == 0
+         && g_strcmp0 (command_of (a), command_of (b)) == 0
+         && g_icon_equal (mocka_menu_app_get_icon (a), mocka_menu_app_get_icon (b));
+}
+
 static void
 add_step (GArray *steps, gboolean insert, guint position, MockaMenuApp *app)
 {
@@ -71,14 +90,14 @@ mocka_app_model_diff (GPtrArray *from, GPtrArray *to)
         {
           gint wanted = place_of (places, id_of (now, at));
 
-          if (wanted == (gint)at)
+          if (wanted == (gint)at && same_details (g_ptr_array_index (now, at), g_ptr_array_index (to, at)))
             {
               at++;
               continue;
             }
 
-          /* Gone from the new list, or wanted somewhere already passed. */
-          if (wanted < 0 || wanted < (gint)at)
+          /* Gone, wanted somewhere already passed, or the same app rewritten. */
+          if (wanted < 0 || wanted <= (gint)at)
             {
               add_step (steps, FALSE, at, NULL);
               g_ptr_array_remove_index (now, at);

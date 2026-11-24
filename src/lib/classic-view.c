@@ -210,6 +210,12 @@ show_apps (MockaClassicView *self, GPtrArray *apps)
   gtk_adjustment_set_value (adjustment, gtk_adjustment_get_lower (adjustment));
 }
 
+static void
+set_row_name_chars (GtkWidget *row, gpointer data)
+{
+  mocka_app_item_row_set_name_chars (row, GPOINTER_TO_INT (data));
+}
+
 /*
  * The same apps, applied as the difference so the rows that stay keep their
  * place, their widget and the scroll position (SPEC section 14).
@@ -220,6 +226,10 @@ splice_apps (MockaClassicView *self, GPtrArray *apps)
   GArray *steps = mocka_app_model_diff (self->apps, apps);
   GtkListBoxRow *selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (self->app_list));
   gint was = selected != NULL ? gtk_list_box_row_get_index (selected) : -1;
+  gint wanted = name_chars_for (apps);
+  gboolean resize = wanted != self->name_chars;
+
+  self->name_chars = wanted;
 
   for (guint i = 0; i < steps->len; i++)
     {
@@ -240,6 +250,11 @@ splice_apps (MockaClassicView *self, GPtrArray *apps)
     }
 
   remember_apps (self, apps);
+
+  if (resize)
+    {
+      gtk_container_foreach (GTK_CONTAINER (self->app_list), set_row_name_chars, GINT_TO_POINTER (self->name_chars));
+    }
 
   /* A removed selection moves to whatever took its place (SPEC section 14). */
   if (was >= 0 && gtk_list_box_get_selected_row (GTK_LIST_BOX (self->app_list)) == NULL)

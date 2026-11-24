@@ -32,7 +32,7 @@ struct _MockaCategoryList
   GtkWidget *items; /* a list box down a column, a flow box along a row */
   gboolean horizontal;
 
-  gint saved_selection; /* the item to put back when a search is cleared */
+  gchar *saved_id;
   gboolean rollover;
 };
 
@@ -75,22 +75,6 @@ selected_item (MockaCategoryList *self)
   return item;
 }
 
-static gint
-item_index (MockaCategoryList *self, GtkWidget *item)
-{
-  if (item == NULL)
-    {
-      return -1;
-    }
-
-  if (self->horizontal)
-    {
-      return gtk_flow_box_child_get_index (GTK_FLOW_BOX_CHILD (item));
-    }
-
-  return gtk_list_box_row_get_index (GTK_LIST_BOX_ROW (item));
-}
-
 static void
 select_item (MockaCategoryList *self, GtkWidget *item)
 {
@@ -126,6 +110,46 @@ static void
 destroy_row (GtkWidget *widget, gpointer user_data)
 {
   gtk_widget_destroy (widget);
+}
+
+static GtkAdjustment *
+scroller_adjustment (MockaCategoryList *self)
+{
+  return self->horizontal ? gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (self->scroller))
+                          : gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->scroller));
+}
+
+/* "All", and anything with no selection, answers "". */
+static gchar *
+selected_id (MockaCategoryList *self)
+{
+  GtkWidget *item = selected_item (self);
+  MockaMenuCategory *category = item != NULL ? g_object_get_data (G_OBJECT (item), "category") : NULL;
+
+  return g_strdup (category != NULL ? mocka_menu_category_get_id (category) : "");
+}
+
+static GtkWidget *
+item_with_id (MockaCategoryList *self, const gchar *id)
+{
+  for (gint i = 0; id != NULL && *id != '\0'; i++)
+    {
+      GtkWidget *item = nth_item (self, i);
+      MockaMenuCategory *category;
+
+      if (item == NULL)
+        {
+          break;
+        }
+
+      category = g_object_get_data (G_OBJECT (item), "category");
+      if (category != NULL && g_strcmp0 (mocka_menu_category_get_id (category), id) == 0)
+        {
+          return item;
+        }
+    }
+
+  return nth_item (self, 0);
 }
 
 /* icon is borrowed: the image takes its own reference. */
@@ -245,17 +269,15 @@ mocka_category_list_set_searching (MockaCategoryList *self, gboolean searching)
 
   gtk_widget_set_sensitive (self->scroller, !searching);
 
-  if (searching && self->saved_selection < 0)
+  if (searching && self->saved_id == NULL)
     {
-      gint index = item_index (self, selected_item (self));
-
-      self->saved_selection = index >= 0 ? index : 0;
+      self->saved_id = selected_id (self);
       unselect_items (self);
     }
-  else if (!searching && self->saved_selection >= 0)
+  else if (!searching && self->saved_id != NULL)
     {
-      select_item (self, nth_item (self, self->saved_selection));
-      self->saved_selection = -1;
+      select_item (self, item_with_id (self, self->saved_id));
+      g_clear_pointer (&self->saved_id, g_free);
     }
 }
 
@@ -297,7 +319,7 @@ mocka_category_list_reset (MockaCategoryList *self, gboolean take_focus)
   g_return_if_fail (MOCKA_IS_CATEGORY_LIST (self));
 
   gtk_widget_set_sensitive (self->scroller, TRUE);
-  self->saved_selection = -1;
+  g_clear_pointer (&self->saved_id, g_free);
 
   first = nth_item (self, 0);
   if (first != NULL)
@@ -309,8 +331,7 @@ mocka_category_list_reset (MockaCategoryList *self, gboolean take_focus)
         }
     }
 
-  adjustment = self->horizontal ? gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (self->scroller))
-                                : gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->scroller));
+  adjustment = scroller_adjustment (self);
   gtk_adjustment_set_value (adjustment, gtk_adjustment_get_lower (adjustment));
 }
 
@@ -364,42 +385,23 @@ mocka_category_list_rebuild (MockaCategoryList *self)
 void
 mocka_category_list_update (MockaCategoryList *self)
 {
-  GtkWidget *item;
-  gchar *selected = NULL;
-  gint restored = -1;
+  gchar *selected;
+  gdouble scrolled;
 
   g_return_if_fail (MOCKA_IS_CATEGORY_LIST (self));
 
-  item = selected_item (self);
-  if (item != NULL)
-    {
-      MockaMenuCategory *category = g_object_get_data (G_OBJECT (item), "category");
-
-      selected = g_strdup (category != NULL ? mocka_menu_category_get_id (category) : NULL);
-    }
+  selected = selected_id (self);
+  scrolled = gtk_adjustment_get_value (scroller_adjustment (self));
 
   build_items (self);
 
-  for (gint i = 0; selected != NULL; i++)
+  /* A search holds the selection in saved_id until its text goes. */
+  if (self->saved_id == NULL)
     {
-      MockaMenuCategory *category;
-
-      item = nth_item (self, i);
-      if (item == NULL)
-        {
-          break;
-        }
-
-      category = g_object_get_data (G_OBJECT (item), "category");
-      if (category != NULL && g_strcmp0 (mocka_menu_category_get_id (category), selected) == 0)
-        {
-          restored = i;
-          break;
-        }
+      select_item (self, item_with_id (self, selected));
     }
 
-  /* Its category is gone, or "All" was showing: back to "All". */
-  select_item (self, nth_item (self, restored >= 0 ? restored : 0));
+  gtk_adjustment_set_value (scroller_adjustment (self), scrolled);
 
   g_free (selected);
 }
@@ -407,12 +409,23 @@ mocka_category_list_update (MockaCategoryList *self)
 static void
 mocka_category_list_init (MockaCategoryList *self)
 {
-  self->saved_selection = -1;
+}
+
+static void
+mocka_category_list_finalize (GObject *object)
+{
+  MockaCategoryList *self = MOCKA_CATEGORY_LIST (object);
+
+  g_clear_pointer (&self->saved_id, g_free);
+
+  G_OBJECT_CLASS (mocka_category_list_parent_class)->finalize (object);
 }
 
 static void
 mocka_category_list_class_init (MockaCategoryListClass *klass)
 {
+  G_OBJECT_CLASS (klass)->finalize = mocka_category_list_finalize;
+
   signals[SIGNAL_CATEGORY_SELECTED] = g_signal_new ("category-selected", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
                                                     0, NULL, NULL, NULL, G_TYPE_NONE, 0);
 }

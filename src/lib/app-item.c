@@ -391,9 +391,21 @@ mocka_app_item_new_row (MockaMenuApp *app, MockaFavourites *favourites, gint nam
     }
 
   g_object_set_data_full (G_OBJECT (row), "app", g_object_ref (app), g_object_unref);
+  g_object_set_data (G_OBJECT (row), "name-label", label);
   gtk_container_add (GTK_CONTAINER (draggable_holder (row, app, favourites)), box);
 
   return row;
+}
+
+void
+mocka_app_item_row_set_name_chars (GtkWidget *row, gint name_chars)
+{
+  GtkWidget *label = g_object_get_data (G_OBJECT (row), "name-label");
+
+  if (label != NULL)
+    {
+      gtk_label_set_width_chars (GTK_LABEL (label), name_chars);
+    }
 }
 
 GtkWidget *

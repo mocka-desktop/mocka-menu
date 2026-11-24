@@ -243,6 +243,50 @@ struct _MockaMenuData
 
 G_DEFINE_TYPE (MockaMenuData, mocka_menu_data, G_TYPE_OBJECT)
 
+typedef struct
+{
+  GPtrArray *trees;
+  GPtrArray *categories;
+  GPtrArray *all_apps;
+  GHashTable *all_app_ids;
+} MockaMenuLists;
+
+static MockaMenuLists
+empty_lists (void)
+{
+  MockaMenuLists lists
+      = { g_ptr_array_new_with_free_func (g_object_unref), g_ptr_array_new_with_free_func (g_object_unref),
+          g_ptr_array_new_with_free_func (g_object_unref), g_hash_table_new (g_str_hash, g_str_equal) };
+
+  return lists;
+}
+
+static MockaMenuLists
+lists_of (MockaMenuData *self)
+{
+  MockaMenuLists lists = { self->trees, self->categories, self->all_apps, self->all_app_ids };
+
+  return lists;
+}
+
+static void
+use_lists (MockaMenuData *self, MockaMenuLists lists)
+{
+  self->trees = lists.trees;
+  self->categories = lists.categories;
+  self->all_apps = lists.all_apps;
+  self->all_app_ids = lists.all_app_ids;
+}
+
+static void
+free_lists (MockaMenuLists lists)
+{
+  g_ptr_array_unref (lists.trees);
+  g_ptr_array_unref (lists.categories);
+  g_ptr_array_unref (lists.all_apps);
+  g_hash_table_unref (lists.all_app_ids);
+}
+
 enum
 {
   SIGNAL_CHANGED,
@@ -282,10 +326,7 @@ mocka_menu_data_class_init (MockaMenuDataClass *klass)
 static void
 mocka_menu_data_init (MockaMenuData *self)
 {
-  self->trees = g_ptr_array_new_with_free_func (g_object_unref);
-  self->categories = g_ptr_array_new_with_free_func (g_object_unref);
-  self->all_apps = g_ptr_array_new_with_free_func (g_object_unref);
-  self->all_app_ids = g_hash_table_new (g_str_hash, g_str_equal);
+  use_lists (self, empty_lists ());
 }
 
 MockaMenuData *
@@ -503,16 +544,14 @@ load_one_menu (MockaMenuData *self, const gchar *basename, GError **error)
 gboolean
 mocka_menu_data_load (MockaMenuData *self, GError **error)
 {
+  MockaMenuLists previous;
   gboolean loaded = TRUE;
 
   g_return_val_if_fail (MOCKA_IS_MENU_DATA (self), FALSE);
 
+  previous = lists_of (self);
   self->reloading = TRUE;
-
-  g_ptr_array_set_size (self->trees, 0);
-  g_ptr_array_set_size (self->categories, 0);
-  g_ptr_array_set_size (self->all_apps, 0);
-  g_hash_table_remove_all (self->all_app_ids);
+  use_lists (self, empty_lists ());
 
   for (gsize i = 0; loaded && self->menus != NULL && self->menus[i] != NULL; i++)
     {
@@ -522,6 +561,12 @@ mocka_menu_data_load (MockaMenuData *self, GError **error)
   if (loaded)
     {
       g_ptr_array_sort (self->all_apps, compare_by_name);
+      free_lists (previous);
+    }
+  else
+    {
+      free_lists (lists_of (self));
+      use_lists (self, previous);
     }
 
   self->reloading = FALSE;

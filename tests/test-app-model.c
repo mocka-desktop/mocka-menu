@@ -134,6 +134,30 @@ test_same_list_has_no_steps (Fixture *fixture, gconstpointer data)
   check (fixture, ids, ids, 0);
 }
 
+/*
+ * A reload builds new app objects for the same entries. Comparing the details
+ * rather than the objects is what keeps that from replacing every row.
+ */
+static void
+test_reloaded_apps_have_no_steps (Fixture *fixture, gconstpointer data)
+{
+  const gchar *const ids[] = { "alpha.desktop", "beta.desktop", "dual.desktop", NULL };
+  MockaMenuData *reloaded = load_test_menu ();
+  GPtrArray *before = list_of (fixture->data, ids);
+  GPtrArray *after = list_of (reloaded, ids);
+  GArray *steps;
+
+  g_assert_true (g_ptr_array_index (before, 0) != g_ptr_array_index (after, 0));
+
+  steps = mocka_app_model_diff (before, after);
+  g_assert_cmpuint (steps->len, ==, 0);
+
+  g_array_unref (steps);
+  g_ptr_array_unref (before);
+  g_ptr_array_unref (after);
+  g_object_unref (reloaded);
+}
+
 static void
 test_one_app_installed (Fixture *fixture, gconstpointer data)
 {
@@ -208,6 +232,7 @@ main (int argc, char **argv)
 
 #define ADD(path, func) g_test_add (path, Fixture, NULL, fixture_set_up, func, fixture_tear_down)
   ADD ("/app-model/same-list-has-no-steps", test_same_list_has_no_steps);
+  ADD ("/app-model/reloaded-apps-have-no-steps", test_reloaded_apps_have_no_steps);
   ADD ("/app-model/one-app-installed", test_one_app_installed);
   ADD ("/app-model/one-app-removed", test_one_app_removed);
   ADD ("/app-model/first-and-last", test_first_and_last);
