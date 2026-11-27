@@ -5,9 +5,9 @@
  */
 
 /*
- * SPEC section 4. The window behaves like a popup menu: it takes the pointer
- * and the keyboard while it is open and gives them back when it closes, and
- * it starts from the same state every time it opens.
+ * SPEC section 4. The window behaves like a popup menu: it takes the pointer,
+ * and the keyboard unless the search entry outside it is holding that, and
+ * gives them back when it closes. It starts from the same state every time.
  *
  * Where it is placed, and what it holds, belong to the layouts.
  */
@@ -37,6 +37,7 @@ struct _MockaMenuWindow
   GtkPositionType panel_side;
   MockaMenuWindowLayout layout;
   gboolean open;
+  gboolean keyboard_elsewhere;
   guint handover;    /* drags and popup menus of ours holding the grab */
   guint regrab;      /* idle waiting to take the grab back */
   guint32 closed_at; /* event time of the last close on the anchor */
@@ -170,8 +171,9 @@ static void
 take_grab (MockaMenuWindow *self)
 {
   GdkSeat *seat = gdk_display_get_default_seat (gtk_widget_get_display (GTK_WIDGET (self)));
-  GdkGrabStatus status = gdk_seat_grab (seat, gtk_widget_get_window (GTK_WIDGET (self)), GDK_SEAT_CAPABILITY_ALL, TRUE,
-                                        NULL, NULL, NULL, NULL);
+  GdkSeatCapabilities wanted = self->keyboard_elsewhere ? GDK_SEAT_CAPABILITY_ALL_POINTING : GDK_SEAT_CAPABILITY_ALL;
+  GdkGrabStatus status
+      = gdk_seat_grab (seat, gtk_widget_get_window (GTK_WIDGET (self)), wanted, TRUE, NULL, NULL, NULL, NULL);
 
   if (status == GDK_GRAB_SUCCESS)
     {
@@ -179,7 +181,7 @@ take_grab (MockaMenuWindow *self)
     }
   else
     {
-      g_warning ("mocka-menu: could not grab the pointer and keyboard");
+      g_warning ("mocka-menu: the menu could not take its grab");
     }
 }
 
@@ -277,6 +279,13 @@ mocka_menu_window_set_panel_side (MockaMenuWindow *self, GtkPositionType side)
 {
   g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
   self->panel_side = side;
+}
+
+void
+mocka_menu_window_set_keyboard_elsewhere (MockaMenuWindow *self, gboolean elsewhere)
+{
+  g_return_if_fail (MOCKA_IS_MENU_WINDOW (self));
+  self->keyboard_elsewhere = elsewhere;
 }
 
 void
@@ -426,9 +435,16 @@ mocka_menu_window_open (MockaMenuWindow *self, GtkWidget *anchor)
     }
   gtk_widget_show (GTK_WIDGET (self));
 
-  /* The device grab uses owner_events, so clicks on the panel and its other
-   * applets reach them, not us. A GTK grab sends those here too. */
-  gtk_grab_add (GTK_WIDGET (self));
+  /*
+   * The device grab uses owner_events, so clicks on the panel and its other
+   * applets reach them, not us. A GTK grab sends those here too, which is
+   * wrong when the search entry in the panel is the one being typed in: GTK
+   * would route its keys and clicks here instead.
+   */
+  if (!self->keyboard_elsewhere)
+    {
+      gtk_grab_add (GTK_WIDGET (self));
+    }
 
   take_grab (self);
 

@@ -908,6 +908,49 @@ mocka_launcher_view_clear_search (MockaLauncherView *self)
   mocka_category_list_grab_focus_on_row (MOCKA_CATEGORY_LIST (self->categories));
 }
 
+void
+mocka_launcher_view_set_search_in_panel (MockaLauncherView *self, gboolean in_panel)
+{
+  g_return_if_fail (MOCKA_IS_LAUNCHER_VIEW (self));
+
+  gtk_widget_set_no_show_all (self->entry, in_panel);
+  gtk_widget_set_visible (self->entry, !in_panel);
+}
+
+void
+mocka_launcher_view_set_search_text (MockaLauncherView *self, const gchar *text)
+{
+  g_return_if_fail (MOCKA_IS_LAUNCHER_VIEW (self));
+
+  gtk_entry_set_text (GTK_ENTRY (self->entry), text != NULL ? text : "");
+}
+
+gboolean
+mocka_launcher_view_navigate_results (MockaLauncherView *self, guint keyval)
+{
+  g_return_val_if_fail (MOCKA_IS_LAUNCHER_VIEW (self), FALSE);
+
+  switch (keyval)
+    {
+    case GDK_KEY_Down:
+    case GDK_KEY_KP_Down:
+      focus_page (self, FALSE);
+      return TRUE;
+    case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter:
+      activate_selected (self);
+      return TRUE;
+    /* The cursor moves in the applet's entry instead. */
+    case GDK_KEY_Left:
+    case GDK_KEY_KP_Left:
+    case GDK_KEY_Right:
+    case GDK_KEY_KP_Right:
+      return FALSE;
+    default:
+      return navigate_pages (self, keyval);
+    }
+}
+
 static GtkWidget *
 arrow_button (const gchar *icon_name, GCallback handler, MockaLauncherView *self)
 {

@@ -562,6 +562,13 @@ on_key_press (GtkWidget *widget, GdkEventKey *event, MockaClassicView *self)
       return GDK_EVENT_STOP;
     }
 
+  /* In `panel` the entry belongs to the applet, so there is nothing here to
+   * type into. */
+  if (!gtk_widget_get_visible (self->entry))
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
+
   if (!gtk_search_entry_handle_event (GTK_SEARCH_ENTRY (self->entry), (GdkEvent *)event))
     {
       return GDK_EVENT_PROPAGATE;
@@ -682,9 +689,43 @@ mocka_classic_view_set_rollover (MockaClassicView *self, gboolean rollover)
 void
 mocka_classic_view_set_search_position (MockaClassicView *self, MockaClassicSearchPosition position)
 {
+  gboolean in_panel = position == MOCKA_CLASSIC_SEARCH_PANEL;
+
   g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
 
-  gtk_box_reorder_child (GTK_BOX (self), self->entry, position == MOCKA_CLASSIC_SEARCH_BOTTOM ? 1 : 0);
+  gtk_widget_set_no_show_all (self->entry, in_panel);
+  gtk_widget_set_visible (self->entry, !in_panel);
+
+  if (!in_panel)
+    {
+      gtk_box_reorder_child (GTK_BOX (self), self->entry, position == MOCKA_CLASSIC_SEARCH_BOTTOM ? 1 : 0);
+    }
+}
+
+void
+mocka_classic_view_set_search_text (MockaClassicView *self, const gchar *text)
+{
+  g_return_if_fail (MOCKA_IS_CLASSIC_VIEW (self));
+
+  gtk_entry_set_text (GTK_ENTRY (self->entry), text != NULL ? text : "");
+}
+
+gboolean
+mocka_classic_view_navigate_results (MockaClassicView *self, guint keyval)
+{
+  g_return_val_if_fail (MOCKA_IS_CLASSIC_VIEW (self), FALSE);
+
+  switch (keyval)
+    {
+    /* The cursor moves in the applet's entry instead. */
+    case GDK_KEY_Left:
+    case GDK_KEY_KP_Left:
+    case GDK_KEY_Right:
+    case GDK_KEY_KP_Right:
+      return FALSE;
+    default:
+      return navigate_app_list (self, keyval);
+    }
 }
 
 gboolean

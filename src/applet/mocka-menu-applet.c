@@ -28,6 +28,7 @@
 
 /* Between the icon and the label, when the label is shown. */
 #define LABEL_SPACING 6
+#define PANEL_ENTRY_CHARS 16
 
 #define MOCKA_TYPE_MENU_APPLET (mocka_menu_applet_get_type ())
 G_DECLARE_FINAL_TYPE (MockaMenuApplet, mocka_menu_applet, MOCKA, MENU_APPLET, MatePanelApplet)
@@ -39,16 +40,21 @@ struct _MockaMenuApplet
   GtkWidget *button;
   GtkWidget *image;
   GtkWidget *label;
+  GtkWidget *panel_entry;
   GtkWidget *menu_window;
   GtkWidget *view;
   MockaMenuData *data;
   MockaFavourites *favourites;
   MockaHotkey *hotkey;
-  GSettings *settings; /* shared by every applet, not owned (SPEC section 15) */
-  gboolean font_changed_while_open;
+  GSettings *settings;      /* shared by every applet, not owned (SPEC section 15) */
+  GtkWidget *watched_panel; /* the toplevel whose clicks close the menu, not owned */
+  gboolean rebuild_when_closed;
 };
 
 G_DEFINE_TYPE (MockaMenuApplet, mocka_menu_applet, PANEL_TYPE_APPLET)
+
+static void update_search_position (MockaMenuApplet *self);
+static void drop_entry_focus (MockaMenuApplet *self);
 
 /*
  * Tried in order when the icon in the settings is missing from the theme, so
@@ -173,6 +179,7 @@ static void
 on_change_orient (MockaMenuApplet *self, MatePanelAppletOrient orient, gpointer user_data)
 {
   mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window), panel_side_for_orient (orient));
+  update_search_position (self);
   update_label (self);
   /* The frame is measured across the panel, which turns with it. */
   update_icon (self);
@@ -183,6 +190,15 @@ static void
 on_menu_opened (MockaMenuApplet *self)
 {
   gtk_widget_set_state_flags (self->button, GTK_STATE_FLAG_ACTIVE, FALSE);
+
+  /* Nothing grabs the keyboard in `panel`, so the entry has to hold it or the
+   * typing would land in whichever window the panel took it from. */
+  if (gtk_widget_get_visible (self->panel_entry))
+    {
+      mate_panel_applet_request_focus (MATE_PANEL_APPLET (self), gtk_get_current_event_time ());
+      gtk_widget_grab_focus (self->panel_entry);
+      gtk_editable_set_position (GTK_EDITABLE (self->panel_entry), -1);
+    }
 }
 
 static void
@@ -202,10 +218,12 @@ static void
 on_menu_closed (MockaMenuApplet *self)
 {
   gtk_widget_unset_state_flags (self->button, GTK_STATE_FLAG_ACTIVE);
+  gtk_entry_set_text (GTK_ENTRY (self->panel_entry), "");
+  drop_entry_focus (self);
 
-  if (self->font_changed_while_open)
+  if (self->rebuild_when_closed)
     {
-      self->font_changed_while_open = FALSE;
+      self->rebuild_when_closed = FALSE;
       rebuild_view (self);
     }
 }
@@ -216,15 +234,27 @@ on_menu_closed (MockaMenuApplet *self)
  * waits until it is.
  */
 static void
-on_font_changed (MockaMenuApplet *self)
+rebuild_view_when_closed (MockaMenuApplet *self)
 {
   if (mocka_menu_window_is_open (MOCKA_MENU_WINDOW (self->menu_window)))
     {
-      self->font_changed_while_open = TRUE;
+      self->rebuild_when_closed = TRUE;
       return;
     }
 
   rebuild_view (self);
+}
+
+/*
+ * Each row settles on its icon as it is built, so icons that arrived after
+ * the menu was last built, a newly installed game among them, need the rows
+ * made again (SPEC section 16).
+ */
+static void
+on_icon_theme_changed (MockaMenuApplet *self)
+{
+  update_icon (self);
+  rebuild_view_when_closed (self);
 }
 
 /* Closed, the whole list is replaced; open, only the difference moves
@@ -246,6 +276,132 @@ on_tree_changed (MockaMenuApplet *self)
     {
       mocka_classic_view_update (MOCKA_CLASSIC_VIEW (self->view));
     }
+}
+
+static void
+send_search_text (MockaMenuApplet *self, const gchar *text)
+{
+  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
+    {
+      mocka_launcher_view_set_search_text (MOCKA_LAUNCHER_VIEW (self->view), text);
+    }
+  else if (MOCKA_IS_CLASSIC_VIEW (self->view))
+    {
+      mocka_classic_view_set_search_text (MOCKA_CLASSIC_VIEW (self->view), text);
+    }
+}
+
+/* The panel keeps giving the entry the keyboard until something takes it. */
+static void
+drop_entry_focus (MockaMenuApplet *self)
+{
+  GtkWidget *toplevel = gtk_widget_get_toplevel (GTK_WIDGET (self));
+
+  if (gtk_widget_is_toplevel (toplevel) && gtk_window_get_focus (GTK_WINDOW (toplevel)) == self->panel_entry)
+    {
+      gtk_window_set_focus (GTK_WINDOW (toplevel), NULL);
+    }
+}
+
+/*
+ * In `panel` the menu takes no GTK grab, so clicks on the panel go to the
+ * panel rather than to the menu. A click anywhere but the entry and the
+ * button closes the menu and gives the keyboard back (SPEC section 4).
+ */
+static gboolean
+on_panel_click (MockaMenuApplet *self, GdkEventButton *event)
+{
+  GtkWidget *clicked = gtk_get_event_widget ((GdkEvent *)event);
+
+  if (!gtk_widget_get_visible (self->panel_entry))
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
+
+  if (clicked != NULL
+      && (clicked == self->panel_entry || gtk_widget_is_ancestor (clicked, self->panel_entry) || clicked == self->button
+          || gtk_widget_is_ancestor (clicked, self->button)))
+    {
+      return GDK_EVENT_PROPAGATE;
+    }
+
+  mocka_menu_window_close (MOCKA_MENU_WINDOW (self->menu_window));
+  drop_entry_focus (self);
+
+  return GDK_EVENT_PROPAGATE;
+}
+
+static void
+watch_panel_clicks (MockaMenuApplet *self)
+{
+  GtkWidget *toplevel = gtk_widget_get_toplevel (GTK_WIDGET (self));
+
+  if (!gtk_widget_is_toplevel (toplevel) || toplevel == self->watched_panel)
+    {
+      return;
+    }
+
+  self->watched_panel = toplevel;
+  gtk_widget_add_events (toplevel, GDK_BUTTON_PRESS_MASK);
+  g_signal_connect_object (toplevel, "button-press-event", G_CALLBACK (on_panel_click), self, G_CONNECT_SWAPPED);
+}
+
+/*
+ * The panel does not hand keyboard focus to an applet on its own, so a click
+ * in the entry asks for it first, or there is no cursor to type into.
+ */
+static gboolean
+on_panel_entry_button_press (MockaMenuApplet *self, GdkEventButton *event)
+{
+  mate_panel_applet_request_focus (MATE_PANEL_APPLET (self), event->time);
+  gtk_widget_grab_focus (self->panel_entry);
+
+  return GDK_EVENT_PROPAGATE;
+}
+
+static void
+on_panel_entry_changed (MockaMenuApplet *self)
+{
+  const gchar *text = gtk_entry_get_text (GTK_ENTRY (self->panel_entry));
+
+  /* Typing opens the menu to show the results (SPEC section 9.3). The menu
+   * takes the grab as it opens, so the cursor is put back in the entry. */
+  if (*text != '\0' && !mocka_menu_window_is_open (MOCKA_MENU_WINDOW (self->menu_window)))
+    {
+      mocka_menu_window_open (MOCKA_MENU_WINDOW (self->menu_window), self->button);
+      gtk_widget_grab_focus (self->panel_entry);
+      gtk_editable_set_position (GTK_EDITABLE (self->panel_entry), -1);
+    }
+
+  send_search_text (self, text);
+}
+
+static gboolean
+on_panel_entry_key_press (MockaMenuApplet *self, GdkEventKey *event)
+{
+  if (event->keyval == GDK_KEY_Escape)
+    {
+      if (*gtk_entry_get_text (GTK_ENTRY (self->panel_entry)) != '\0')
+        {
+          gtk_entry_set_text (GTK_ENTRY (self->panel_entry), "");
+          return GDK_EVENT_STOP;
+        }
+
+      mocka_menu_window_close (MOCKA_MENU_WINDOW (self->menu_window));
+      return GDK_EVENT_STOP;
+    }
+
+  if (MOCKA_IS_LAUNCHER_VIEW (self->view))
+    {
+      return mocka_launcher_view_navigate_results (MOCKA_LAUNCHER_VIEW (self->view), event->keyval);
+    }
+
+  if (MOCKA_IS_CLASSIC_VIEW (self->view))
+    {
+      return mocka_classic_view_navigate_results (MOCKA_CLASSIC_VIEW (self->view), event->keyval);
+    }
+
+  return GDK_EVENT_PROPAGATE;
 }
 
 static void
@@ -290,31 +446,65 @@ update_rollover (MockaMenuApplet *self)
 }
 
 /*
- * The search entry sits above or below the menu. In the Classic layout
- * `panel` behaves as `top` until the panel entry arrives in M5
- * (SPEC section 9.3).
+ * The search entry sits above or below the menu, or in the panel beside the
+ * button (SPEC section 9.3).
  */
+static gboolean
+panel_is_horizontal (MockaMenuApplet *self)
+{
+  MatePanelAppletOrient orient = mate_panel_applet_get_orient (MATE_PANEL_APPLET (self));
+
+  return orient == MATE_PANEL_APPLET_ORIENT_UP || orient == MATE_PANEL_APPLET_ORIENT_DOWN;
+}
+
+/* A vertical panel has no room for an entry, so `panel` falls back to `top`
+ * until it is horizontal again (SPEC section 9.3). */
+static MockaClassicSearchPosition
+wanted_search_position (MockaMenuApplet *self)
+{
+  gchar *value = g_settings_get_string (self->settings, "search-position");
+  MockaClassicSearchPosition position = MOCKA_CLASSIC_SEARCH_TOP;
+
+  if (g_strcmp0 (value, "bottom") == 0)
+    {
+      position = MOCKA_CLASSIC_SEARCH_BOTTOM;
+    }
+  else if (g_strcmp0 (value, "panel") == 0 && panel_is_horizontal (self))
+    {
+      position = MOCKA_CLASSIC_SEARCH_PANEL;
+    }
+
+  g_free (value);
+
+  return position;
+}
+
 static void
 update_search_position (MockaMenuApplet *self)
 {
-  gchar *value;
+  MockaClassicSearchPosition position = wanted_search_position (self);
+  gboolean in_panel = position == MOCKA_CLASSIC_SEARCH_PANEL;
+
+  gtk_widget_set_visible (self->panel_entry, in_panel);
+  mocka_menu_window_set_keyboard_elsewhere (MOCKA_MENU_WINDOW (self->menu_window), in_panel);
+
+  if (!in_panel)
+    {
+      gtk_entry_set_text (GTK_ENTRY (self->panel_entry), "");
+    }
 
   if (self->view == NULL)
     {
       return;
     }
 
-  /* The Launcher puts it at the top whatever the setting says. */
   if (MOCKA_IS_LAUNCHER_VIEW (self->view))
     {
+      mocka_launcher_view_set_search_in_panel (MOCKA_LAUNCHER_VIEW (self->view), in_panel);
       return;
     }
 
-  value = g_settings_get_string (self->settings, "search-position");
-  mocka_classic_view_set_search_position (MOCKA_CLASSIC_VIEW (self->view), g_strcmp0 (value, "bottom") == 0
-                                                                               ? MOCKA_CLASSIC_SEARCH_BOTTOM
-                                                                               : MOCKA_CLASSIC_SEARCH_TOP);
-  g_free (value);
+  mocka_classic_view_set_search_position (MOCKA_CLASSIC_VIEW (self->view), position);
 }
 
 /* Every opening starts from the same state (SPEC section 4). */
@@ -446,8 +636,8 @@ build_menu_contents (MockaMenuApplet *self)
   build_view (self);
 
   g_signal_connect_object (self->data, "changed", G_CALLBACK (on_tree_changed), self, G_CONNECT_SWAPPED);
-  g_signal_connect_object (gtk_settings_get_default (), "notify::gtk-font-name", G_CALLBACK (on_font_changed), self,
-                           G_CONNECT_SWAPPED);
+  g_signal_connect_object (gtk_settings_get_default (), "notify::gtk-font-name", G_CALLBACK (rebuild_view_when_closed),
+                           self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->settings, "changed::layout", G_CALLBACK (update_layout), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->settings, "changed::rollover", G_CALLBACK (update_rollover), self, G_CONNECT_SWAPPED);
   g_signal_connect_object (self->settings, "changed::search-position", G_CALLBACK (update_search_position), self,
@@ -558,6 +748,7 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
 {
   MatePanelApplet *applet = MATE_PANEL_APPLET (self);
   GtkWidget *box;
+  GtkWidget *panel_box;
 
   self->settings = mocka_menu_get_settings ();
 
@@ -570,7 +761,16 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
   self->button = gtk_button_new ();
   gtk_button_set_relief (GTK_BUTTON (self->button), GTK_RELIEF_NONE);
   gtk_container_add (GTK_CONTAINER (self->button), box);
-  gtk_container_add (GTK_CONTAINER (self), self->button);
+
+  self->panel_entry = gtk_search_entry_new ();
+  gtk_entry_set_placeholder_text (GTK_ENTRY (self->panel_entry), _ ("Search"));
+  gtk_entry_set_width_chars (GTK_ENTRY (self->panel_entry), PANEL_ENTRY_CHARS);
+  gtk_widget_set_no_show_all (self->panel_entry, TRUE);
+
+  panel_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, LABEL_SPACING);
+  gtk_box_pack_start (GTK_BOX (panel_box), self->button, FALSE, FALSE, 0);
+  gtk_box_pack_start (GTK_BOX (panel_box), self->panel_entry, FALSE, FALSE, 0);
+  gtk_container_add (GTK_CONTAINER (self), panel_box);
 
   gtk_widget_set_tooltip_text (self->button, _ ("Menu"));
 
@@ -579,7 +779,12 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
   mocka_menu_window_set_panel_side (MOCKA_MENU_WINDOW (self->menu_window),
                                     panel_side_for_orient (mate_panel_applet_get_orient (applet)));
   g_signal_connect_swapped (self->button, "clicked", G_CALLBACK (on_button_clicked), self);
+  g_signal_connect_swapped (self->panel_entry, "search-changed", G_CALLBACK (on_panel_entry_changed), self);
+  g_signal_connect_swapped (self->panel_entry, "button-press-event", G_CALLBACK (on_panel_entry_button_press), self);
+  g_signal_connect_swapped (self->panel_entry, "key-press-event", G_CALLBACK (on_panel_entry_key_press), self);
   g_signal_connect (self, "change-orient", G_CALLBACK (on_change_orient), NULL);
+  g_signal_connect_swapped (self, "hierarchy-changed", G_CALLBACK (watch_panel_clicks), self);
+  g_signal_connect_swapped (self, "realize", G_CALLBACK (watch_panel_clicks), self);
   g_signal_connect_swapped (self->menu_window, "reset", G_CALLBACK (on_menu_reset), self);
   g_signal_connect_swapped (self->menu_window, "opened", G_CALLBACK (on_menu_opened), self);
   g_signal_connect_swapped (self->menu_window, "closed", G_CALLBACK (on_menu_closed), self);
@@ -596,12 +801,14 @@ mocka_menu_applet_setup (MockaMenuApplet *self)
   g_signal_connect (self, "change-size", G_CALLBACK (on_change_size), NULL);
 
   /* Icons follow the theme, including a theme change (SPEC section 16). */
-  g_signal_connect_object (gtk_icon_theme_get_default (), "changed", G_CALLBACK (update_icon), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (gtk_icon_theme_get_default (), "changed", G_CALLBACK (on_icon_theme_changed), self,
+                           G_CONNECT_SWAPPED);
   /* A new GTK theme can change the button's padding and border. */
   g_signal_connect_swapped (self->button, "style-updated", G_CALLBACK (update_icon), self);
 
   update_icon (self);
   gtk_widget_show_all (GTK_WIDGET (self));
+  watch_panel_clicks (self);
   /* After show_all, which would otherwise reveal a label meant to be hidden. */
   update_label (self);
 }

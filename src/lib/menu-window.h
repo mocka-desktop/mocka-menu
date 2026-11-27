@@ -26,6 +26,12 @@ GtkWidget *mocka_menu_window_new (void);
 void mocka_menu_window_set_panel_side (MockaMenuWindow *self, GtkPositionType side);
 
 /*
+ * For `panel`, where the search entry is outside this window: only the
+ * pointer is grabbed, so the entry keeps the keyboard and its cursor.
+ */
+void mocka_menu_window_set_keyboard_elsewhere (MockaMenuWindow *self, gboolean elsewhere);
+
+/*
  * Classic sits against the panel button, Launcher covers the monitor holding
  * it (SPEC sections 6 and 7). Launcher also takes a transparent visual where
  * the compositor allows one, and leaves the painting to the layout.

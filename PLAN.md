@@ -128,7 +128,7 @@ grabs and marco's bindings keep working.
 - [x] Change debounce, background rebuild, swap when closed
 - [x] Diff and splice while open, keeping category, search, scroll, and selection, with unit tests for the diff
 - [x] Manual test: install and remove packages with `pkg` while the menu is open, in both layouts
-- [ ] `panel` search position: entry beside the button, focus on click and Super, opening on typing, Up, Down, and Enter, fallback to `top` on vertical panels
+- [x] `panel` search position: entry beside the button, focus on click, opening on typing, Up, Down, and Enter, fallback to `top` on vertical panels
 - [ ] Preferences window for every setting in SPEC section 15, changes applied immediately
 - [ ] Preferences in the button menu
 - [ ] Manual test by maintainer
