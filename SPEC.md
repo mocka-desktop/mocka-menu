@@ -1,6 +1,6 @@
 # Mocka Menu Specification
 
-Status: draft 9
+Status: draft 10
 Component: `mocka-menu`
 License: BSD-3-Clause
 
@@ -268,8 +268,9 @@ In `panel` mode:
 - The applet shows a search entry on the panel, next to the panel button,
   like the Windows taskbar search. The menu window then has no search entry
   of its own.
-- Clicking the entry, or opening the menu with Super, gives the entry
-  keyboard focus.
+- Clicking the entry gives it keyboard focus. Opening the menu with Super does
+  not: the category list holds the focus, as in every other search position
+  (section 4).
 - Typing in the entry opens the menu window if it is closed and shows the
   results in it.
 - Up and Down in the entry move the selection in the results. Enter launches

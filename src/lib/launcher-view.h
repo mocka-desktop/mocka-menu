@@ -32,4 +32,9 @@ void mocka_launcher_view_update (MockaLauncherView *self);
 gboolean mocka_launcher_view_is_searching (MockaLauncherView *self);
 void mocka_launcher_view_clear_search (MockaLauncherView *self);
 
+/* For `panel`, where the entry the user types in belongs to the applet. */
+void mocka_launcher_view_set_search_in_panel (MockaLauncherView *self, gboolean in_panel);
+void mocka_launcher_view_set_search_text (MockaLauncherView *self, const gchar *text);
+gboolean mocka_launcher_view_navigate_results (MockaLauncherView *self, guint keyval);
+
 G_END_DECLS

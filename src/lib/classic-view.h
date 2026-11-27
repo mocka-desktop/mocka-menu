@@ -38,9 +38,14 @@ typedef enum
 {
   MOCKA_CLASSIC_SEARCH_TOP,
   MOCKA_CLASSIC_SEARCH_BOTTOM,
+  MOCKA_CLASSIC_SEARCH_PANEL,
 } MockaClassicSearchPosition;
 
 void mocka_classic_view_set_search_position (MockaClassicView *self, MockaClassicSearchPosition position);
+
+/* For `panel`, where the entry the user types in belongs to the applet. */
+void mocka_classic_view_set_search_text (MockaClassicView *self, const gchar *text);
+gboolean mocka_classic_view_navigate_results (MockaClassicView *self, guint keyval);
 
 /* Whether results are being shown rather than a category. */
 gboolean mocka_classic_view_is_searching (MockaClassicView *self);
